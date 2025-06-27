@@ -157,11 +157,8 @@ class RV32IAssembler:
             # See if there is a label on this line to record the address
             label_match = re.match(r'^\s*([a-zA-Z0-9_\.]+)\s*:(.*)$', line)
 
-            # use regex to see if label on line
-
-            # If label, process label
-
-            # Handle edge cases
+            # Take the string of the label and then add it and the current PC to the labels dict.
+            self.labels[label_match] = {label_match, self.pc}
 
             # If no comments and no label, instruction is now clean. Append
             clean_lines.append(line)
@@ -203,38 +200,83 @@ class RV32IAssembler:
     def encode_i_type(self, opcode, operands):
         """Encodes I-type instructions to binary"""
         
-        # TODO: This doesn't handle JALR or save/loads with the offset formats.
         if opcode == "jalr":
-            if len(operands) == 3:
-                rd = operands[0]
-            elif len(operands) == 2:
-                rd = "ra"
+            if len(operands) == 3:  # jalr rd, rs1, immd
+                rd_str = operands[0]
+                rs1_str = operands[1]
+                immd_str = operands[2]
+            elif len(operands) == 2:    # jalr rs1, immd (rd implied as ra)
+                rd_str = "ra"
+                rs1_str = operands[0]
+                immd_str = operands[1]
             else:
                 raise ValueError(f"Invalid operand count for JALR: {len(operands)}")
-        # Handle load instructions with formats
+            
+        # Handle loads with different formats: lw rd, immd(rs1)
         elif opcode in ["lb", "lh", "lw", "lbu", "lhu"]:
+
             if len(operands) != 2: # invalid form
-                raise ValueError(f"Load instruction requires 2 operands") # todo: Complete
-            rd = operands[0]
+                raise ValueError(f"Load instruction requires 2 operands")
+            
+            rd_str = operands[0]
+            # Look for a number that may be positive or negative, then look for an opening parenthesis
+            # then look for a set of letters/numbers within the parenthesis, use operands[1] to match
+            match = re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operands[1]) 
+            # IF we didn't find a match, the instruction format is invalid
+            if not match:
+                raise ValueError(f"Instruction format for load is invalid: {operands[1]}")
 
-            # Parse
+            immd_str = match.group(1) # Returns the immediate
+            rs1_str = match.group(2) # Returns the first source register
+
         else:
-            rd = self.registers[operands[0]]
-            r1 = self.registers[operands[1]]
-            immd = operands[2]
+            if len(operands) != 3:
+                raise ValueError(f"I-type instruction requires 3 operands: {opcode}{', '.join(operands())}")
 
-            if rd not in self.registers:
-                raise ValueError(f"Invalid register name: {rd}")
-            if r1 not in self.registers:
-                raise ValueError(f"Invalid register name: {r1}")
-            if immd > 2048 or immd < -2048:
-                raise ValueError(f"Immediate value is out of range: {immd}")
+            rd_str = operands[0]
+            rs1_str = operands[1]
+            immd_str = operands[2]
 
-            f3 = self.func3[opcode]
-            op = self.opcodes[opcode]
+        # Validate parsed RD, RS1, and IMMD
+        if rd_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rd_str}")
+        elif rs1_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs1_str}")
+        
+        rs1 = self.registers[rs1_str]
+        rd = self.registers[rd_str]
 
-            instruction = (immd << 20) | (r1 << 15) | (f3 << 12) | (rd << 7) | op
-            return instruction
+        # handle the immediate and it being in different bases
+        try:
+            if immd_str.startswith("0x"):
+                immd = int(immd_str, 16)
+            elif immd_str.startswith("0b"):
+                immd = int(immd_str, 2)
+            else:
+                immd = int(immd_str)
+        except ValueError:
+            raise ValueError(f"Invalid immediate: {immd_str}")
+
+        # if it's a shift, then can only shift by 31 at the most
+        if opcode in ["slli", "srli", "srai"] 
+            if not (0 <= immd < 32)
+                raise ValueError(f"Shift amount out of range (0-31): {immd}")
+
+            # SRAI uses a different func7
+            f7 = self.func7[opcode]
+            immd = (f7 << 5) | (immd & 0x1F)
+        # Else, just check if in standard bounds & then encode
+        else:
+            if not (-2048 <= immd_str < 2048):
+                raise ValueError(f"Immediate value out of range (-2048 to 2047): {immd}")
+
+            # Encode immd
+            immd = immd & 0xFFF
+
+        # Build instruction
+        instruction = (immd << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]
+
+        return instruction
 
     def encode_s_type(self, opcode, operands):
         """Encodes S-type instructions to binary"""
