@@ -171,9 +171,14 @@ class RV32IAssembler:
     def parse_instruction(self, line):
         """Parses single instruction and returns opcode + operands"""
         # Split line into opcode and operands with regex.
-        # Would not let me put this on one line...?
-        opcode, operands = re.match(r'\s*([a-z]+)(?:\s+(.*))?$', line)
+        opcode, operands = re.match('\s*([a-z]+)\s*(.*)$', line)
         return opcode, operands
+
+    def decode_offset(self, operand):
+        """Parses a operands of the style immd(rs1), returning the match, if any"""
+        # Look for a number that may be positive or negative, then look for opening parenthesis
+        # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
+        return re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operand) 
 
     def encode_r_type(self, opcode, operands):
         """Encodes R-type instructions to binary"""
@@ -216,12 +221,12 @@ class RV32IAssembler:
         elif opcode in ["lb", "lh", "lw", "lbu", "lhu"]:
 
             if len(operands) != 2: # invalid form
-                raise ValueError(f"Load instruction requires 2 operands")
+                raise ValueError(f"Load instruction requires 2 operands, number of operands: {len(operands)}")
             
             rd_str = operands[0]
-            # Look for a number that may be positive or negative, then look for an opening parenthesis
-            # then look for a set of letters/numbers within the parenthesis, use operands[1] to match
-            match = re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operands[1]) 
+            # Look for a number that may be positive or negative, then look for opening parenthesis
+            # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
+            match = self.decode_offset(self, operands[1])
             # IF we didn't find a match, the instruction format is invalid
             if not match:
                 raise ValueError(f"Instruction format for load is invalid: {operands[1]}")
@@ -258,8 +263,8 @@ class RV32IAssembler:
             raise ValueError(f"Invalid immediate: {immd_str}")
 
         # if it's a shift, then can only shift by 31 at the most
-        if opcode in ["slli", "srli", "srai"] 
-            if not (0 <= immd < 32)
+        if opcode in ["slli", "srli", "srai"]:
+            if not (0 <= immd < 32):
                 raise ValueError(f"Shift amount out of range (0-31): {immd}")
 
             # SRAI uses a different func7
@@ -287,8 +292,47 @@ class RV32IAssembler:
     def encode_j_type(self, opcode, operands, current_pc):
         """Encodes J-type instructions to binary"""
 
+        # Validate count of operands
+        if len(operands) == 2: # jal rd, label
+            rd_str = operands[0]
+            label = operands[1]
+        elif len(operands) == 1: # jal label (imply rd = ra)
+            rd_str = "ra"
+            label = operands[1]
+
+        # opcode is the string of the instruction's opcode
+        # operands is a list of strings that are the different groupings of operands within the instruction
+
     def encode_u_type(self, opcode, operands):
         """Encodes U-type instructions to binary"""
+
+        if len(operands) != 2:
+            raise ValueError(f"Invalid operand count in U-type instruction, opcode: {opcode}, operands: {', '.join(operands)}")
+        
+        rd_str = operands[0]
+        immd_str = operands[1]
+
+        if rd_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rd_str}")
+
+        rd = self.registers[rd_str]
+
+        try:
+            if immd_str.startswith("0x"):
+                immd = int(immd_str, 16)
+            elif immd_str.startswith("0b"):
+                immd = int(immd_str, 2)
+            else:
+                immd = int(immd_str)
+        except ValueError:
+            raise ValueError(f"Invalid immediate value: {immd_str}")
+
+        if not (0 <= immd < (1 << 20)):
+            raise ValueError(f"Immediate value out of range for U-type instruction: {immd_str}")
+        
+        instruction = (immd << 12) | (rd << 7) | self.opcodes[opcode]
+
+        return instruction
 
     def assemble_instruction(self, line, current_pc):
         """Assembles one instruction to machine code"""
