@@ -3,7 +3,7 @@ Assembles simple RISC-V programs to .mem files for use by my CPU; because every 
 
 The assembler uses a two-pass style of compilation and manages a symbol table for use by the assembler. Using regular expressions, the assembler implements an instruction parsing engine to decode the different instruction formats and convert the mnemonics to hexadecimal. Additionally, the assembler handles errors within the assembly code like range checking of immediates, register/label validation, and constructing the machine code file instructions. The current version is implemented for the RV32i instruction set, except for instructions like `ecall` as this program is not intended, at least currently, for use on a system with an OS.
 
-In the future, I would like to have the assembler output .mem files for the data and the instructions, so that I can use things like statically declared strings. My CPU uses a harvard architecture at the moment, although I would like to change this to Von Neumann eventually. In that case, I'd produce a unified .mem file and develop some methodology of placing the different elements throughout memory.
+In the future, I would like to have the assembler output .mem files for the data and the instructions, so that I can use things like statically declared strings. My CPU uses a Harvard architecture at the moment, although I would like to change this to Von Neumann eventually. In that case, I'd produce a unified .mem file and develop some methodology of placing the different elements throughout memory.
 
 # Operation/Completed work:
 ## Preprocessor:
