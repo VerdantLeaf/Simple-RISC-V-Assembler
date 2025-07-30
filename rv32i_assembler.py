@@ -194,26 +194,44 @@ class RV32IAssembler:
         except ValueError:
             raise ValueError(f"Invalid immediate: {imm_str}")
         return imm
+    
+    def validate_registers(self, rd_str="none", rs1_str="none", rs2_str="none"):
+        """Validates registers from the registers dictionary"""
+        registers = []
+
+        if (rd_str != "none") and rd_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rd_str}")
+        else:
+            registers.append(self.registers[rd_str])
+
+        if (rs1_str != "none") and rs1_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs1_str}")
+        else:
+            registers.append(self.registers[rs1_str])
+
+        if (rs2_str != "none") and rs2_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs2_str}")
+        else:
+            registers.append(self.registers[rs2_str])
 
     def encode_r_type(self, opcode, operands):
         """Encodes R-type instructions to binary"""
 
-        rd = operands[0]
-        r1 = operands[1]
-        r2 = operands[2]
+        rd_str = operands[0]
+        rs1_str = operands[1]
+        rs2_str = operands[2]
 
-        if rd not in self.registers:
-            raise ValueError(f"Invalid register name: {rd}")
-        if r1 not in self.registers:
-            raise ValueError(f"Invalid register name: {r1}")
-        if r2 not in self.registers:
-            raise ValueError(f"Invalid register name: {r2}")
+        registers = self.validate_registes(self, rd_str, rs1_str, rs2_str)
+
+        rd = registers[0]
+        rs1 = registers[1]
+        rs2 = registers[2]
 
         f7 = self.func7[opcode]
         f3 = self.func3[opcode]
         op = self.opcodes[opcode]
         # Assemble instruction
-        instruction = (f7 << 25) | (r2 << 20) | (r1 << 15) | (f3 << 12) | (rd << 7) | op
+        instruction = (f7 << 25) | (rs2 << 20) | (rs1 << 15) | (f3 << 12) | (rd << 7) | op
         return instruction
 
     def encode_i_type(self, opcode, operands):
@@ -256,14 +274,10 @@ class RV32IAssembler:
             rs1_str = operands[1]
             imm_str = operands[2]
 
-        # Validate parsed RD, RS1, and imm
-        if rd_str not in self.registers:
-            raise ValueError(f"Invalid register name: {rd_str}")
-        elif rs1_str not in self.registers:
-            raise ValueError(f"Invalid register name: {rs1_str}")
-        
-        rs1 = self.registers[rs1_str]
-        rd = self.registers[rd_str]
+        registers = self.validate_registers(self, rd_str, rs1_str)
+
+        rd = registers[0]
+        rs1 = registers[1]
 
         imm = self.decode_immediate(self, imm_str)
 
