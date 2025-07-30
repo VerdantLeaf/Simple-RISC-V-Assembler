@@ -175,10 +175,23 @@ class RV32IAssembler:
         return opcode, operands
 
     def decode_offset(self, operand):
-        """Parses a operands of the style immd(rs1), returning the match, if any"""
+        """Parses a operands of the style imm(rs1), returning the match, if any"""
         # Look for a number that may be positive or negative, then look for opening parenthesis
         # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
         return re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operand) 
+
+    def decode_immediate(self, imm_str):
+        """Parses an immediate number in either dec, hex, or bin"""
+        try:
+            if imm_str.startswith("0x"):
+                imm = int(imm_str, 16)
+            elif imm_str.startswith("0b"):
+                imm = int(imm_str, 2)
+            else:
+                imm = int(imm_str)
+        except ValueError:
+            raise ValueError(f"Invalid immediate: {imm_str}")
+        return imm
 
     def encode_r_type(self, opcode, operands):
         """Encodes R-type instructions to binary"""
@@ -206,18 +219,18 @@ class RV32IAssembler:
         """Encodes I-type instructions to binary"""
         
         if opcode == "jalr":
-            if len(operands) == 3:  # jalr rd, rs1, immd
+            if len(operands) == 3:  # jalr rd, rs1, imm
                 rd_str = operands[0]
                 rs1_str = operands[1]
-                immd_str = operands[2]
-            elif len(operands) == 2:    # jalr rs1, immd (rd implied as ra)
+                imm_str = operands[2]
+            elif len(operands) == 2:    # jalr rs1, imm (rd implied as ra)
                 rd_str = "ra"
                 rs1_str = operands[0]
-                immd_str = operands[1]
+                imm_str = operands[1]
             else:
                 raise ValueError(f"Invalid operand count for JALR: {len(operands)}")
             
-        # Handle loads with different formats: lw rd, immd(rs1)
+        # Handle loads with different formats: lw rd, imm(rs1)
         elif opcode in ["lb", "lh", "lw", "lbu", "lhu"]:
 
             if len(operands) != 2: # invalid form
@@ -231,7 +244,7 @@ class RV32IAssembler:
             if not match:
                 raise ValueError(f"Instruction format for load is invalid: {operands[1]}")
 
-            immd_str = match.group(1) # Returns the immediate
+            imm_str = match.group(1) # Returns the immediate
             rs1_str = match.group(2) # Returns the first source register
 
         else:
@@ -240,9 +253,9 @@ class RV32IAssembler:
 
             rd_str = operands[0]
             rs1_str = operands[1]
-            immd_str = operands[2]
+            imm_str = operands[2]
 
-        # Validate parsed RD, RS1, and IMMD
+        # Validate parsed RD, RS1, and imm
         if rd_str not in self.registers:
             raise ValueError(f"Invalid register name: {rd_str}")
         elif rs1_str not in self.registers:
@@ -251,43 +264,101 @@ class RV32IAssembler:
         rs1 = self.registers[rs1_str]
         rd = self.registers[rd_str]
 
-        # handle the immediate and it being in different bases
-        try:
-            if immd_str.startswith("0x"):
-                immd = int(immd_str, 16)
-            elif immd_str.startswith("0b"):
-                immd = int(immd_str, 2)
-            else:
-                immd = int(immd_str)
-        except ValueError:
-            raise ValueError(f"Invalid immediate: {immd_str}")
+        imm = self.decode_immediate(self, imm_str)
 
         # if it's a shift, then can only shift by 31 at the most
         if opcode in ["slli", "srli", "srai"]:
-            if not (0 <= immd < 32):
-                raise ValueError(f"Shift amount out of range (0-31): {immd}")
+            if not (0 <= imm < 32):
+                raise ValueError(f"Shift amount out of range (0-31): {imm}")
 
             # SRAI uses a different func7
             f7 = self.func7[opcode]
-            immd = (f7 << 5) | (immd & 0x1F)
+            imm = (f7 << 5) | (imm & 0x1F)
         # Else, just check if in standard bounds & then encode
         else:
-            if not (-2048 <= immd_str < 2048):
-                raise ValueError(f"Immediate value out of range (-2048 to 2047): {immd}")
+            if not (-2048 <= imm_str < 2048):
+                raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
 
-            # Encode immd
-            immd = immd & 0xFFF
+            # Encode imm
+            imm = imm & 0xFFF
 
         # Build instruction
-        instruction = (immd << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]
+        instruction = (imm << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]
 
         return instruction
 
     def encode_s_type(self, opcode, operands):
         """Encodes S-type instructions to binary"""
 
+        if len(operands) != 2:
+            raise ValueError(f"Error: Save instruction requires format of 'rs2 offset(rs1)', number of operands: {len(operands)}")
+        
+        rs2_str = operands[0]
+        match = self.decode_offset(self, operands[1])
+
+        if not match:
+            raise ValueError(f"Error: Could not parse offset in save instruction!\tOperand: {operands[1]}")
+
+        imm_str = match.group(1)
+        rs1_str = match.group(2)
+
+        if rs1_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs1_str}")
+        elif rs2_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs2_str}")
+
+        rs1 = self.registers[rs1_str]
+        rs2 = self.registers[rs2_str]
+
+        imm = self.decode_immediate(self, imm_str)
+
+        if not (-2048 <= imm_str < 2048):  # Can probably bundle this into the decode imm func if we pass the opcode also
+                raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
+
+        imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
+        imm_4_0 = imm & 0x1F
+
+        instruction = ((imm_11_5) << 25) | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_0 << 7) | self.opcodes[opcode]
+
+        return instruction
+
     def encode_b_type(self, opcode, operands, current_pc):
         """Encodes B-type instructions to binary"""
+
+        # B type instruction form: beq rs1, rs2, offset. len(operands) == 3, should
+        if len(operands) != 3:
+            raise ValueError(f"Branch type instruction requires three operands, number of operands: {len(operands)}")
+        
+        rs1_str = operands[0]
+        rs2_str = operands[1]
+        label = operands[2]
+
+        # Roll into validate_registers() one day
+        if rs1_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs1_str}")
+        elif rs2_str not in self.registers:
+            raise ValueError(f"Invalid register name: {rs2_str}")
+
+        rs1 = self.registers[rs1_str]
+        rs2 = self.registers[rs2_str]
+
+        if label not in self.labels:
+            raise ValueError(f"Undefined label: {label}")
+        
+        target_addr = self.labels[label]
+        imm = target_addr - current_pc
+
+        if not (-4096 <= imm < 4096) or imm % 2 != 0:
+            raise ValueError(f"Branch offset is out of range or not a multiple of 2: {imm}")
+
+        imm_12 = (imm >> 12) & 0x1
+        imm_11 = (imm >> 11) & 0x1
+        imm_10_5 = (imm >> 5) & 0x3F
+        imm_4_1 = (imm >> 1) & 0xF
+
+        instruction = (imm_12 << 31) | (imm_10_5 << 25)  | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_1 << 8) | (imm_11 << 7) | self.opcodes[opcode]
+
+        return instruction
 
     def encode_j_type(self, opcode, operands, current_pc):
         """Encodes J-type instructions to binary"""
@@ -310,27 +381,19 @@ class RV32IAssembler:
             raise ValueError(f"Invalid operand count in U-type instruction, opcode: {opcode}, operands: {', '.join(operands)}")
         
         rd_str = operands[0]
-        immd_str = operands[1]
+        imm_str = operands[1]
 
         if rd_str not in self.registers:
             raise ValueError(f"Invalid register name: {rd_str}")
 
         rd = self.registers[rd_str]
 
-        try:
-            if immd_str.startswith("0x"):
-                immd = int(immd_str, 16)
-            elif immd_str.startswith("0b"):
-                immd = int(immd_str, 2)
-            else:
-                immd = int(immd_str)
-        except ValueError:
-            raise ValueError(f"Invalid immediate value: {immd_str}")
+        imm = self.decode_immediate(self, imm_str)
 
-        if not (0 <= immd < (1 << 20)):
-            raise ValueError(f"Immediate value out of range for U-type instruction: {immd_str}")
+        if not (0 <= imm < (1 << 20)):
+            raise ValueError(f"Immediate value out of range for U-type instruction: {imm_str}")
         
-        instruction = (immd << 12) | (rd << 7) | self.opcodes[opcode]
+        instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]
 
         return instruction
 
