@@ -3,7 +3,7 @@ Assembles simple RISC-V programs to .mem files for use by my CPU; because every 
 
 The assembler uses a two-pass style of compilation and manages a symbol table for use by the assembler. Using regular expressions, the assembler implements an instruction parsing engine to decode the different instruction formats and convert the mnemonics to hexadecimal. Additionally, the assembler handles errors within the assembly code like range checking of immediates, register/label validation, and constructing the machine code file instructions. The current version is implemented for the RV32i instruction set, except for instructions like `ecall` as this program is not intended, at least currently, for use on a system with an OS.
 
-In the future, I would like to have the assembler output .mem files for the data and the instructions, so that I can use things like statically declared strings. My CPU uses a Harvard architecture at the moment, although I would like to change this to Von Neumann eventually. In that case, I'd produce a unified .mem file and develop some methodology of placing the different elements throughout memory.
+However, allowing the assembler to create the different text and data sections of the output file. Additionally, doing other things to make it a "real" assembler would increase the utility. However, for now, I need it for my purposes and I'll expand it if I need to/should.
 
 # Operation/Completed work:
 ## Preprocessor:
@@ -17,7 +17,9 @@ For each of the cleaned lines, the instruction is then assembled with `assemble_
 These encoding functions are somewhat straightforward for some, and deceptively complex for others. Instructions that are R-type or U-type are fairly simple, as they only have one format or have a limited number of instructions. However, I-type instructions, for example, can take multiple different forms, such as `addi x12, x17, 3` or `lw x23, 24(x14)`, and the assembler must be able to handler the different formats. Additionally, because of how the `parse_instruction()` function operates, the `immd(rs1)` form of I-type instructions are caught as one operand. Due to this, the `decode_offset()` function must be used as it contains a regular expression that will separate these two operands. 
 
 ### Error Checking
-Throughout this process, and the functions for all of the other instruction types, error checking of values, names, and other errors is being flagged (In the future, checking for such errors may occur before the assembly of the instructions, during the first pass, to improve assembly performance). Immediate values are both range checked, and are converted from hexadecimal/binary if written as such in the source code. From this point, the instruction is then built in a bitwise manner, where it is then appended to the memory list of assembled instructions.
+Throughout this process, and the functions for all of the other instruction types, error checking of values, names (`validate_registers()`), and other errors is being flagged (In the future, checking for such errors may occur before the assembly of the instructions, during the first pass, to improve assembly performance). Immediate values are both range checked, and are converted from hexadecimal/binary in `deocde_immediate()` if written as such in the source code. From this point, the instruction is then built in a bitwise manner, where it is then appended to the memory list of assembled instructions.
 
 ### Memory padding
 In my research, I found that Vivado will not accept .mem files that contain less memory than the memory that you've declared. Due to this, the rest of the memory is filled with zeros. The output file, as passed in the command line, is then written to, where each instruction is written as eight hexadecimal characters to represent the 32 bit instruction. This is done for all of the instructions in memory, and then the assembly is completed.
+
+### 
