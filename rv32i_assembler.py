@@ -157,13 +157,15 @@ class RV32IAssembler:
             # See if there is a label on this line to record the address
             label_match = re.match(r'^\s*([a-zA-Z0-9_\.]+)\s*:(.*)$', line)
 
-            # Take the string of the label and then add it and the current PC to the labels dict.
-            self.labels[label_match] = {label_match, self.pc}
+            # If the label doesn't exist in the label dict, then take the string + current
+            # PC and add it to the labels dict
+            if label_match not in self.labels:
+                self.labels[label_match] = {label_match, self.pc}
 
             # If no comments and no label, instruction is now clean. Append
             clean_lines.append(line)
 
-            # Each instruction is 4B
+            # Each instruction is 4 Bytes
             self.pc += 4
 
         return clean_lines
@@ -212,7 +214,6 @@ class RV32IAssembler:
         op = self.opcodes[opcode]
         # Assemble instruction
         instruction = (f7 << 25) | (r2 << 20) | (r1 << 15) | (f3 << 12) | (rd << 7) | op
-
         return instruction
 
     def encode_i_type(self, opcode, operands):
@@ -284,7 +285,6 @@ class RV32IAssembler:
 
         # Build instruction
         instruction = (imm << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]
-
         return instruction
 
     def encode_s_type(self, opcode, operands):
@@ -313,13 +313,12 @@ class RV32IAssembler:
         imm = self.decode_immediate(self, imm_str)
 
         if not (-2048 <= imm_str < 2048):  # Can probably bundle this into the decode imm func if we pass the opcode also
-                raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
+            raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
 
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
 
         instruction = ((imm_11_5) << 25) | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_0 << 7) | self.opcodes[opcode]
-
         return instruction
 
     def encode_b_type(self, opcode, operands, current_pc):
@@ -344,7 +343,7 @@ class RV32IAssembler:
 
         if label not in self.labels:
             raise ValueError(f"Undefined label: {label}")
-        
+        # Labels dictionary uses the label to hash to a PC value
         target_addr = self.labels[label]
         imm = target_addr - current_pc
 
@@ -357,7 +356,6 @@ class RV32IAssembler:
         imm_4_1 = (imm >> 1) & 0xF
 
         instruction = (imm_12 << 31) | (imm_10_5 << 25)  | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_1 << 8) | (imm_11 << 7) | self.opcodes[opcode]
-
         return instruction
 
     def encode_j_type(self, opcode, operands, current_pc):
@@ -369,10 +367,33 @@ class RV32IAssembler:
             label = operands[1]
         elif len(operands) == 1: # jal label (imply rd = ra)
             rd_str = "ra"
-            label = operands[1]
+            label = operands[0]
+        else:
+            raise ValueError(f"J-type instruction requires one or two operands: {opcode} {', '.join(operands)}")
 
         # opcode is the string of the instruction's opcode
         # operands is a list of strings that are the different groupings of operands within the instruction
+        if not rd_str in self.registers:
+            raise ValueError(f"Invalid register name: {rd_str}")
+
+        rd = self.registers[rd_str]
+
+        if label not in self.labels:
+            raise ValueError(f"Invalid label name. {label} is not referenced anywhere in the source code")
+        
+        target_addr = self.labels[label]
+        offset = target_addr - current_pc
+
+        if not (-1048576 <= offset < 1048576) or offset % 2 != 0:
+            raise ValueError(f"Jump offset is out of range or not a multiple of 2: {offset}")
+        
+        imm_20 = (offset >> 20) & 0x1
+        imm_10_1 = (offset >> 1) & 0x3FF
+        imm_11 = (offset >> 11) & 0x1
+        imm_19_12 = (offset >> 12) & 0x7F
+
+        instruction = (imm_20 << 31) | (imm_10_1 << 21) | (imm_11 << 20) | (imm_19_12 << 12) | (rd << 7) | self.opcodes[opcode]
+        return instruction
 
     def encode_u_type(self, opcode, operands):
         """Encodes U-type instructions to binary"""
@@ -394,7 +415,6 @@ class RV32IAssembler:
             raise ValueError(f"Immediate value out of range for U-type instruction: {imm_str}")
         
         instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]
-
         return instruction
 
     def assemble_instruction(self, line, current_pc):
