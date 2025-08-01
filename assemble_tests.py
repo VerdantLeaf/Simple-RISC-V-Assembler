@@ -69,7 +69,7 @@ def display_menu(programs):
     print("q - quit")
     print("="*50)
 
-def assemble_program(assembler, source_dir, dest_dir, program_name):
+def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flags=None):
     """Assembles a single program into binary form
 
     Args:
@@ -109,6 +109,13 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
     output_file = dest_path / f"{program_name}.mem"
     
     try:
+        
+        # Set warning flags, if assembler supports it
+        if warning_flags and hasattr(assembler, 'set_warning_flags'):
+            assembler.set_warning_flags(warning_flags)
+        elif warning_flags and hasattr(assembler, 'warning_flags'):
+            assembler.warning_flags = warning_flags
+        
         result = assembler.assemble(str(source_file), str(output_file))
         
         return {

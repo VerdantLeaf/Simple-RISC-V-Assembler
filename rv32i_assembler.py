@@ -11,8 +11,20 @@ import os
 
 class RV32IAssembler:
     """Contains all vars and methods for preprocess, assembly, and file writing"""
-    def __init__(self):
-        # opcodes - Add all RV32I, no support for fence, ecall, etc...
+    def __init__(self, warning_Flags=None):
+        # Warning system
+        self.warning_flags = warning_Flags or {}
+        self.warnings = []
+        self.unused_labels = set()
+        # Init mem, labels, PC [bytes], & NOP command
+        self.labels = {}
+        self.used_labels = set{}
+        self.memory = []
+        self.pc = 0
+        self.nop = 0x00000013
+        self.max_instructions = 1024
+        
+        # opcodes - Use structured dictionary
         self.opcodes = {
             # U-type
             "lui":      0b0110111,
@@ -28,11 +40,6 @@ class RV32IAssembler:
             "bltu":     0b1100011,
             "bgeu":     0b1100011,
             # S-type
-            "lb":       0b0000011,
-            "lh":       0b0000011,
-            "lw":       0b0000011,
-            "lbu":      0b0000011,
-            "lhu":      0b0000011,
             "sb":       0b0100011,
             "sh":       0b0100011,
             "sw":       0b0100011,
@@ -46,6 +53,11 @@ class RV32IAssembler:
             "slli":     0b0010011,
             "srli":     0b0010011,
             "srai":     0b0010011,
+            "lb":       0b0000011,
+            "lh":       0b0000011,
+            "lw":       0b0000011,
+            "lbu":      0b0000011,
+            "lhu":      0b0000011,
             # R-type
             "add":      0b0110011,
             "sub":      0b0110011,
@@ -130,14 +142,61 @@ class RV32IAssembler:
             "x16": 16, "x17": 17, "x18": 18, "x19": 19, "x20": 20, "x21": 21, "x22": 22, "x23": 23, 
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
+        
+    def emit_warning(self, warning_type, message, line_num=None):
+        """Emits a warning based on current warning flags
 
-        # Init mem, labels, PC [bytes], & NOP command
-        self.labels = {}
-        self.memory = []
-        self.pc = 0
-        self.nop = 0x00000013
-        self.zero = 0x00000000
-        self.max_instructions = 1024
+        Args:
+            warning_type (str): The type of the warning encountered
+            message (str): The message for the warning
+            line_num (int, optional): The line number of the warning. Defaults to None.
+
+        Raises:
+            ValueError: Raised if warnings are treated as errors
+        """
+        
+        if self.warning_flags.get('suppress_all', False):
+            return
+        # Check if specific warning is disabled
+        if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
+            return 
+        if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False)
+            return
+        
+        # Format warning mesage
+        if line_num is not None:
+            warning_msg = f"Warning (line {line_num}): {message}"
+        else:
+            warning_msg = f"Warning: {message}"
+            
+        self.warnings.append(warning_msg)
+        
+        # Print warning unless suppressed
+        if not self.warning_flags.get('suppress_all', False):
+            print(warning_msg, file=sys.stderr)
+            
+        # Treat warning as error if flag is set
+        if self.warning_flags.get('error_on_warning', False):
+            raise ValueError(f"Error (Werror): {message}")
+        
+    def should_warn(self, warning_type):
+        """Check if a warning type should be emitted
+
+        Args:
+            warning_type (str): The type of the warning 
+
+        Returns:
+            bool: True if it should be emitted, false if not
+        """
+        if self.warning_flags.get('suppress_all', False):
+            return False
+        
+        if warning_type == 'unused_label':
+            return not self.warning_flags.get('no_unused_label', False)
+        elif warning_type == 'immediate_range':
+            return not self.warning_flags.get('no_immediate_range', False)
+
+        return True
 
     def preprocessor(self, lines):
         """First pass: Collect labels + addresses. Remove comments"""
@@ -182,7 +241,7 @@ class RV32IAssembler:
         # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
         return re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operand) 
 
-    def decode_immediate(self, imm_str):
+    def decode_immediate(self, imm_str, opcode):
         """Parses an immediate number in either dec, hex, or bin"""
         try:
             if imm_str.startswith("0x"):
@@ -193,6 +252,16 @@ class RV32IAssembler:
                 imm = int(imm_str)
         except ValueError:
             raise ValueError(f"Invalid immediate: {imm_str}")
+        
+        if self.should_warn('immediate_range'):
+            if opcode in ["slli", "srli", "srai"]:
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
+            elif opcode in ["jalr", "lb", "lh", "lw", "lbu", "lhu", "sb", "sh", "sw"]:
+                
+            elif opcode in ["beq", "bne", "blt", "bge", "bltu", "bgeu"]:
+                
+            elif opcode in ["lui", "auipc", "jal"]:
+        
         return imm
     
     def validate_registers(self, rd_str= None, rs1_str= None, rs2_str= None):
@@ -296,8 +365,10 @@ class RV32IAssembler:
             imm = (f7 << 5) | (imm & 0x1F)
         # Else, just check if in standard bounds & then encode
         else:
-            if not (-2048 <= imm_str < 2048):
-                raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
+            if not (-2048 <= imm < 2048):
+                if self.should_warn('immediate_range'):
+                    
+                # Allow proceeding though
 
             # Encode imm
             imm = imm & 0xFFF
@@ -329,7 +400,8 @@ class RV32IAssembler:
         imm = self.decode_immediate(self, imm_str)
 
         if not (-2048 <= imm_str < 2048):  # Can probably bundle this into the decode imm func if we pass the opcode also
-            raise ValueError(f"Immediate value out of range (-2048 to 2047): {imm}")
+             if self.should_warn('immediate_range'):
+                    self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
 
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
@@ -404,7 +476,7 @@ class RV32IAssembler:
         imm_11 = (offset >> 11) & 0x1
         imm_19_12 = (offset >> 12) & 0x7F
 
-        instruction = (imm_20 << 31) | (imm_10_1 << 21) | (imm_11 << 20) | (imm_19_12 << 12) | (rd << 7) | self.opcodes[opcode]
+        instruction = (imm_20 << 31) | (imm_10_1 << 21) | (imm_11 << 20) | (imm_19_12 << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
 
     def encode_u_type(self, opcode, operands):
@@ -421,8 +493,8 @@ class RV32IAssembler:
 
         imm = self.decode_immediate(self, imm_str)
 
-        if not (0 <= imm < (1 << 20)):
-            raise ValueError(f"Immediate value out of range for U-type instruction: {imm_str}")
+        if not (0 <= imm < (1 << 20)) and self.should_warn('immediate_range'):
+            self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
         
         instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]
         return instruction
@@ -476,7 +548,12 @@ class RV32IAssembler:
 
         # .mem file needs to fill the entire memory
         while len(self.memory) < self.max_instructions: # Fill remaining memory with zeros 
-            self.memory.append(self.zero)
+            self.memory.append(self.nop)
+
+        # Check for unused labels
+        if self.should_warn('unused_label'):
+            for unused_label in self.unused_labels:
+                self.emit_warning('unused_label', f"Label '{unused_label} is defined but never used")
 
         # Write each assembled instruction in to the output .mem file as an 8 character hex sequence
         with open(output_file, 'w', encoding=ascii) as file:
