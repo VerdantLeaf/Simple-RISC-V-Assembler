@@ -43,6 +43,13 @@ def get_program_files(source_dir):
 
     return sorted([p.stem for p in programs])
 
+def display_menu(programs):
+    """Displays menu to terminal showing different programs available for assembly
+
+    Args:
+        programs (string list): List of valid program names
+    """
+
 def main():
     parser = argparse.ArgumentParser(
         description="Semi-automation of RV32I program assembler",
@@ -80,8 +87,42 @@ def main():
     except Exception as e:
         print(f"Error initializing assembler: {e}")
         sys.exit(1)
+        
+    programs = get_program_files(args.soure_dir)
+    
+    if not programs:
+        print(f"No assembly programs found in '{args.source_dir}' directory")
+        sys.exit(1)
+        
+    if args.assemble_all:
+        print(f"Assembling all {len(programs)} programs...")
+        results = []
+        
+        
+        sys.exit(0)
+        
+    if args.assemble_simple:
+        simple_programs = [p for p in programs if p.startswith('simple_')]
+        if not simple_programs:
+            print("No programs with 'simple_' prefix found.")
+            sys.exit(1)
+            
+            
+            
+        sys.exit(0)
 
-
+    print(f"Found {len(programs)} assembly programs in '{args.source_dir}'")
+    
+    while True:
+        
+        display_menu(programs)
+        
+        try:
+            
+        except KeyboardInterrupt:
+            print("\n\nGoodbye!")
+            break
+            
 
 
 if __name__ == "__main__":
