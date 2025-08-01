@@ -485,22 +485,3 @@ class RV32IAssembler:
 
         print(f"Successfully assembled {len(cleaned_lines)} instructions to {output_file}")
         return True
-
-def main():
-    """Assembles simple RISC-V assembly instructions into machine code stored in .mem files"""
-    if len(sys.argv) != 3:
-        print("Improper usage.\nUsage is: python assembler.py input.s output.mem")
-        return
-
-    input_file = sys.argv[1] # Python isn't a cmd line arg (My C brain is losing it)
-    output_file = sys.argv[2] # Also prints don't need a new line, this language is cheating
-    assembler = RV32IAssembler()
-
-    if not os.path.exists(input_file): # Check if input exists
-        print("Input file at path '{input_file}' not found")
-        return
-
-    assembler.assemble(input_file, output_file) # Call assembler
-
-if __name__ == "__main__":
-    main()
