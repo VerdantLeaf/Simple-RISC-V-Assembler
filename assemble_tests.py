@@ -49,6 +49,22 @@ def display_menu(programs):
     Args:
         programs (string list): List of valid program names
     """
+    # ok, this repeating syntax might be my new favorite thing
+    print("\n" + "="*50)
+    print("RV32I Assembly Program Menu")
+    print("="*50)
+    
+    if not programs:
+        print('No assembly programs found in the source directory.')
+        return
+    
+    for i, program in enumerate(programs, 1):
+        print(f"{i:2d}. {program}")
+        
+    print("\nOptions:")
+    print("Enter number to assemble a specific program")
+    print("q - quit")
+    print("="*50)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -118,11 +134,28 @@ def main():
         display_menu(programs)
         
         try:
+            choice = input("\nEnter your choice: ").strip()
+
+            if choice.lower() == 'q':
+                print('\n\nGoodbye!')
+                break
             
+            try:
+                choice_num = int(choice)            
+                if 1 <= choice_num < len(programs):
+                    program_name = programs[choice_num - 1]
+                else:
+                    print(f"Invalid choice. Please enter a number between 1 and {len(programs)}, or 'q' to quit.")
+                
+            except ValueError:
+                print(f"Invalid choice. Please enter a number between or 'q' to quit.")
+
         except KeyboardInterrupt:
             print("\n\nGoodbye!")
             break
-            
+        except EOFError:
+            print("\n\nGoodbye!")
+            break
 
 
 if __name__ == "__main__":
