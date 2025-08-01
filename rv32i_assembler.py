@@ -18,57 +18,68 @@ class RV32IAssembler:
         self.unused_labels = set()
         # Init mem, labels, PC [bytes], & NOP command
         self.labels = {}
-        self.used_labels = set{}
+        self.used_labels = set()
         self.memory = []
         self.pc = 0
         self.nop = 0x00000013
         self.max_instructions = 1024
+
+        # Reverse mapping of isntr type to check membership easier
+        self.type_to_mnemonics = {
+            "U": {"lui", "auipc"},
+            "J": {"jal", "jalr"},
+            "B": {"beq", "bne", "blt", "bge", "bltu", "bgeu"},
+
+            "S": {"sb", "sh", "sw"},
+            "I": {"addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai", "lb", "lh", "lw", "lbu", "lhu"},
+            "R": {"add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra", "or", "and",}
+        }
         
         # opcodes - Use structured dictionary
         self.opcodes = {
             # U-type
-            "lui":      0b0110111,
-            "auipc":    0b0010111,
+            "lui":      {"opcode": 0b0110111, "type" : "U"},
+            "auipc":    {"opcode": 0b0010111, "type" : "U"},
             # J-type + JALR (call and rtn)
-            "jal":      0b1101111,
-            "jalr":     0b1100111,
+            "jal":      {"opcode": 0b1101111, "type" : "J"}, 
+            "jalr":     {"opcode": 0b1100111, "type" : "J"}, 
             # B-type
-            "beq":      0b1100011,
-            "bne":      0b1100011,
-            "blt":      0b1100011,
-            "bge":      0b1100011,
-            "bltu":     0b1100011,
-            "bgeu":     0b1100011,
+            "beq":      {"opcode": 0b1100011, "type" : "B"}, 
+            "bne":      {"opcode": 0b1100011, "type" : "B"}, 
+            "blt":      {"opcode": 0b1100011, "type" : "B"}, 
+            "bge":      {"opcode": 0b1100011, "type" : "B"}, 
+            "bltu":     {"opcode": 0b1100011, "type" : "B"}, 
+            "bgeu":     {"opcode": 0b1100011, "type" : "B"}, 
             # S-type
-            "sb":       0b0100011,
-            "sh":       0b0100011,
-            "sw":       0b0100011,
+            "sb":       {"opcode": 0b0100011, "type" : "S"}, 
+            "sh":       {"opcode": 0b0100011, "type" : "S"}, 
+            "sw":       {"opcode": 0b0100011, "type" : "S"}, 
             # I-type
-            "addi":     0b0010011,
-            "slti":     0b0010011,
-            "sltiu":    0b0010011,
-            "xori":     0b0010011,
-            "ori":      0b0010011,
-            "andi":     0b0010011,
-            "slli":     0b0010011,
-            "srli":     0b0010011,
-            "srai":     0b0010011,
-            "lb":       0b0000011,
-            "lh":       0b0000011,
-            "lw":       0b0000011,
-            "lbu":      0b0000011,
-            "lhu":      0b0000011,
+            "addi":     {"opcode": 0b0010011, "type" : "I"}, 
+            "slti":     {"opcode": 0b0010011, "type" : "I"}, 
+            "sltiu":    {"opcode": 0b0010011, "type" : "I"}, 
+            "xori":     {"opcode": 0b0010011, "type" : "I"}, 
+            "ori":      {"opcode": 0b0010011, "type" : "I"}, 
+            "andi":     {"opcode": 0b0010011, "type" : "I"}, 
+            "slli":     {"opcode": 0b0010011, "type" : "I"}, 
+            "srli":     {"opcode": 0b0010011, "type" : "I"}, 
+            "srai":     {"opcode": 0b0010011, "type" : "I"}, 
+            "lb":       {"opcode": 0b0000011, "type" : "I"}, 
+            "lh":       {"opcode": 0b0000011, "type" : "I"}, 
+            "lw":       {"opcode": 0b0000011, "type" : "I"}, 
+            "lbu":      {"opcode": 0b0000011, "type" : "I"}, 
+            "lhu":      {"opcode": 0b0000011, "type" : "I"}, 
             # R-type
-            "add":      0b0110011,
-            "sub":      0b0110011,
-            "sll":      0b0110011,
-            "slt":      0b0110011,
-            "sltu":     0b0110011,
-            "xor":      0b0110011,
-            "srl":      0b0110011,
-            "sra":      0b0110011,
-            "or":       0b0110011,
-            "and":      0b0110011,
+            "add":      {"opcode": 0b0110011, "type" : "R"}, 
+            "sub":      {"opcode": 0b0110011, "type" : "R"}, 
+            "sll":      {"opcode": 0b0110011, "type" : "R"}, 
+            "slt":      {"opcode": 0b0110011, "type" : "R"}, 
+            "sltu":     {"opcode": 0b0110011, "type" : "R"}, 
+            "xor":      {"opcode": 0b0110011, "type" : "R"}, 
+            "srl":      {"opcode": 0b0110011, "type" : "R"}, 
+            "sra":      {"opcode": 0b0110011, "type" : "R"}, 
+            "or":       {"opcode": 0b0110011, "type" : "R"}, 
+            "and":      {"opcode": 0b0110011, "type" : "R"}, 
         }
         # Define func3 values for each instruction 
         self.func3 = {
@@ -160,7 +171,7 @@ class RV32IAssembler:
         # Check if specific warning is disabled
         if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
             return 
-        if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False)
+        if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
             return
         
         # Format warning mesage
@@ -254,13 +265,17 @@ class RV32IAssembler:
             raise ValueError(f"Invalid immediate: {imm_str}")
         
         if self.should_warn('immediate_range'):
-            if opcode in ["slli", "srli", "srai"]:
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
-            elif opcode in ["jalr", "lb", "lh", "lw", "lbu", "lhu", "sb", "sh", "sw"]:
-                
-            elif opcode in ["beq", "bne", "blt", "bge", "bltu", "bgeu"]:
-                
-            elif opcode in ["lui", "auipc", "jal"]:
+            if opcode in self.type_to_mnemonics["I"] or opcode in self.type_to_mnemonics["S"] and not (-2048 <= imm < 2048):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
+            elif opcode in self.type_to_mnemonics["B"] and not (-4096 <= imm < 4096):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
+            elif opcode in self.type_to_mnemonics["J"] and not (-1048576 <= imm < 1048574):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
+            elif opcode in self.type_to_mnemonics["J"] and not (imm % 2 == 0):
+                self.emit_warning('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
+            elif opcode in self.type_to_mnemonics["U"] and not (0 <= imm < (1 << 20)):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
+            
         
         return imm
     
@@ -493,7 +508,7 @@ class RV32IAssembler:
 
         imm = self.decode_immediate(self, imm_str)
 
-        if not (0 <= imm < (1 << 20)) and self.should_warn('immediate_range'):
+        if  and self.should_warn('immediate_range'):
             self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
         
         instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]
