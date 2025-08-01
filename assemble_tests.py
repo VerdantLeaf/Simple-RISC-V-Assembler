@@ -62,9 +62,46 @@ def display_menu(programs):
         print(f"{i:2d}. {program}")
         
     print("\nOptions:")
-    print("Enter number to assemble a specific program")
+    print(f"Enter [1-{len(programs)}] to assemble a specific program")
     print("q - quit")
     print("="*50)
+
+def assemble_program(assembler, source_dir, dest_dir, program_name):
+    """Assembles a single program into binary form
+
+    Args:
+        assembler (RV32IAssembler): Assembler object to use
+        source_dir (str): Source directory to search for the program
+        dest_dir (str): Destination directory to place the binary file
+        program_name (str): Name of the program to assemble
+
+    Returns:
+        dict: Dictionary describing the results of the assembly
+    """
+
+
+    source_path = Path(source_dir)
+    dest_path = Path(dest_dir)
+    
+    # Ensure that destination actually exusts
+    dest_path.mkdir(parents=True, exist_ok=True)
+    
+    source_file = None
+    extensions = ['.s', '.asm', '.rv32i']
+    # Check for all extensions and name combinations
+    for ext in extensions:
+        potential_file = source_path / f"{program_name}{ext}"
+        if potential_file.exists():
+            source_file = potential_file
+            break
+        
+    if not source_file:
+        return {
+            'program': program_name,
+            'success': False,
+            'error': f"Source file not found for '{program_name}'"
+        }
+
 
 def main():
     parser = argparse.ArgumentParser(
