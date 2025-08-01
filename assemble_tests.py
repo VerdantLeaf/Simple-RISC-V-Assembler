@@ -158,7 +158,65 @@ def main():
         help='Automatically assemble all programs with "simple_" prefix and exit'
     )
     
+    # Add GCC style warnings
+    parser.add_argument(
+        '-Wall',
+        action='store_true',
+        help='Enable all warnings (like gcc -Wall)'
+    )
+    
+    parser.add_argument(
+        '-Werror',
+        action='store_true',
+        help='Treat all warnign as errors (like gcc -Werror)'
+    )
+    
+    parser.add_argument(
+        '-Wextra',
+        action='store_true',
+        help='Enable extra warnings (like gcc -Wextra)'
+    )
+    
+    parser.add_argument(
+        '-w',
+        action='store_true',
+        help='Suppress all warnings (like gcc -w)'
+    )
+    
+    parser.add_argument(
+        '-Wpedantic',
+        action='store_true',
+        help='Enable pedantic warnings for strict RISC-V compliance'
+    )
+    
+    parser.add_argument(
+        '-Wno-unused-label',
+        action='store_true',
+        help='Suppress warnings about unused labels'
+    )
+    
+    parser.add_argument(
+        '-Wno-immediate-range',
+        action='store_true',
+        help='Suppress warnings about immediate value ranges'
+    )
+    
     args = parser.parse_args()
+    
+    # Warning flag dictionary
+    warning_flags = {
+        'error_on_warning': args.Werror,
+        'all_warnings': args.Wall,
+        'extra_warnings': args.Wextra,
+        'suppress_all': args.w,
+        'pedantic': args.Wpedantic,
+        'no_unused_label': args.Wno_unused_label,
+        'no_immediate_range': args.Wno_immediate_range
+    }
+    
+    # Check for conflicting flags
+    if args.w and (args.Wall or args.Wextra or args.Wpedantic):
+        print("Warning: -w flag suppresses all warnings, other warning flags will be ignored")
     
     try:
         assembler = RV32IAssembler()
