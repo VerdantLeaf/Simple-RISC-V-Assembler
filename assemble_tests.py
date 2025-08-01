@@ -26,7 +26,10 @@ def get_program_files(source_dir):
     """Collects all the assembly program files from the source directory
 
     Args:
-        source_dir (string): The name of hte source directory to search from
+        source_dir (str): The name of hte source directory to search from
+        
+    Returns:
+        list: Str list of all of the assembly programs in the dir
     """
     source_path = Path(source_dir)
     
@@ -102,6 +105,28 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
             'error': f"Source file not found for '{program_name}'"
         }
 
+    # Assembles to .mem files
+    output_file = dest_path / f"{program_name}.mem"
+    
+    try:
+        result = assembler.assemble(str(source_file), str(output_file))
+        
+        return {
+            'program': program_name,
+            'success': True,
+            'source': str(source_file),
+            'output': str(output_file),
+            'warnings': False, # Add warning messages to the assembler
+            'result': result
+        }
+    except Exception as e:
+        return {
+            'program': program_name,
+            'success': False,
+            'warnings': False, # See above for add to assembler
+            'error': str(e),
+            'source;': str(source_file)
+        }
 
 def main():
     parser = argparse.ArgumentParser(
