@@ -104,7 +104,7 @@ def main():
         print(f"Error initializing assembler: {e}")
         sys.exit(1)
         
-    programs = get_program_files(args.soure_dir)
+    programs = get_program_files(args.source_dir)
     
     if not programs:
         print(f"No assembly programs found in '{args.source_dir}' directory")
