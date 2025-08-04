@@ -33,8 +33,10 @@ class RV32IAssembler:
         self.pc = 0
         self.NOP = 0x00000013
         self.MAX_INSTRUCTIONS = 1024
-
+        self.line_nums = []
+        
         self.can_proceed = True
+        self.line_index = 1
         
         # opcodes - Use structured dictionary
         self.opcodes = {
@@ -161,6 +163,7 @@ class RV32IAssembler:
         self.labels = {}
         self.used_labels = set()
         self.memory = []
+        self.line_nums = []
         self.pc = 0
 
     def get_type(self, mnemonic):
@@ -176,7 +179,6 @@ class RV32IAssembler:
         
         
     def record_alert(self, assembler_results, alert_type, message, warning_type = None, line_num=None):
-
 
         if alert_type == "warning":
             # See if the warning should be suppressed    
@@ -236,7 +238,8 @@ class RV32IAssembler:
                 self.labels[label_match] = {label_match, self.pc}
 
             # If no comments and no label, instruction is now clean. Append
-            clean_lines.append((line, line_num))
+            clean_lines.append(line)
+            self.line_nums.append(line_num)
 
             # Each instruction is 4 Bytes
             self.pc += 4
@@ -535,6 +538,8 @@ class RV32IAssembler:
             case "U":
                 return self.encode_u_type(opcode, operands)
             case None:
+                # @todo: Fix this to record the error and then return the failure
+                # Pass line number (line[1]) to this func
                 raise ValueError(f"Unsupported instruction: {opcode}")
         
     def assemble(self, input, output):
@@ -550,19 +555,21 @@ class RV32IAssembler:
 
         # If program is too large, throw error
         if len(cleaned_lines) > self.MAX_INSTRUCTIONS:
-
+            # todo: change to correct err handling
             print(f"Number of instructions in of input file larger than memory size!")
             print(f"Cannot assemble! Max number of instructions is {self.MAX_INSTRUCTIONS}")
             return False
         
         # Second pass is actually assembling the instructions
         self.pc = 0
-        for line in cleaned_lines:
+        for line_num, line in cleaned_lines:
             try:
+                self.line_index = line_num
                 instruction = self.assemble_instruction(line, self.pc)
                 self.memory.append(instruction)
                 self.pc +=4
             except Exception as e:
+                # @todo: Change to correct error handling
                 print(f"Error assembling instruction '{line}': {e}")
                 return False
 
