@@ -7,7 +7,17 @@ import os
 
 # Strategy: Two pass assembly - First pass collects labels and addresses while second pass does 
 # the actual assembly into binary
+class Alert:
+    def __init__(self, type, message, warning_type = None, line_num = None):
+        self.type = type,
+        self.message = message,
+        self.warning_type = warning_type or None
+        self.line_num = line_num or None
 
+class AssemblerResults:
+    def __init__(self):
+        self.success = False
+        self.alerts = [] # List of Alert objects
 
 class RV32IAssembler:
     """Contains all vars and methods for preprocess, assembly, and file writing"""
@@ -21,9 +31,11 @@ class RV32IAssembler:
         self.used_labels = set()
         self.memory = []
         self.pc = 0
-        self.nop = 0x00000013
-        self.max_instructions = 1024
+        self.NOP = 0x00000013
+        self.MAX_INSTRUCTIONS = 1024
 
+        self.can_proceed = True
+        
         # opcodes - Use structured dictionary
         self.opcodes = {
             # U-type
@@ -142,7 +154,15 @@ class RV32IAssembler:
             "x16": 16, "x17": 17, "x18": 18, "x19": 19, "x20": 20, "x21": 21, "x22": 22, "x23": 23, 
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
-        
+
+    def reset_assembler(self):
+        self.warnings = []
+        self.unused_labels = set()
+        self.labels = {}
+        self.used_labels = set()
+        self.memory = []
+        self.pc = 0
+
     def get_type(self, mnemonic):
         """Gets the type of an instruction or None if it does not exist
 
@@ -154,41 +174,23 @@ class RV32IAssembler:
         """
         return self.opcodes.get(mnemonic, {}).get("type", None)
         
-    def emit_warning(self, warning_type, message, line_num=None):
-        """Emits a warning based on current warning flags
+        
+    def record_alert(self, assembler_results, alert_type, message, warning_type = None, line_num=None):
 
-        Args:
-            warning_type (str): The type of the warning encountered
-            message (str): The message for the warning
-            line_num (int, optional): The line number of the warning. Defaults to None.
 
-        Raises:
-            ValueError: Raised if warnings are treated as errors
-        """
+        if alert_type == "warning":
+            # See if the warning should be suppressed    
+            if self.warning_flags.get('suppress_all', False):
+                return 0
+            if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
+                return 0
+            if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
+                return 0
+
+        alert = Alert(alert_type, message, warning_type, line_num)
         
-        if self.warning_flags.get('suppress_all', False):
-            return
-        # Check if specific warning is disabled
-        if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
-            return 
-        if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
-            return
-        
-        # Format warning mesage
-        if line_num is not None:
-            warning_msg = f"Warning (line {line_num}): {message}"
-        else:
-            warning_msg = f"Warning: {message}"
-            
-        self.warnings.append(warning_msg)
-        
-        # Print warning unless suppressed
-        if not self.warning_flags.get('suppress_all', False):
-            print(warning_msg, file=sys.stderr)
-            
-        # Treat warning as error if flag is set
-        if self.warning_flags.get('error_on_warning', False):
-            raise ValueError(f"Error (Werror): {message}")
+        assembler_results.alerts.append(alert)
+
         
     def should_warn(self, warning_type):
         """Check if a warning type should be emitted
@@ -214,6 +216,7 @@ class RV32IAssembler:
 
         clean_lines = []
         self.pc = 0
+        line_num = 1
 
         for line in lines:
             # Replaces everything after a # in a line with nothing
@@ -229,14 +232,15 @@ class RV32IAssembler:
 
             # If the label doesn't exist in the label dict, then take the string + current
             # PC and add it to the labels dict
-            if label_match not in self.labels:
+            if label_match not in self.labels and label_match is not None:
                 self.labels[label_match] = {label_match, self.pc}
 
             # If no comments and no label, instruction is now clean. Append
-            clean_lines.append(line)
+            clean_lines.append((line, line_num))
 
             # Each instruction is 4 Bytes
             self.pc += 4
+            line_num += 1
 
         return clean_lines
 
@@ -269,19 +273,19 @@ class RV32IAssembler:
             type = self.get_type(self, opcode) 
             
             if type == "I" or type == "S" and not (-2048 <= imm < 2048):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
+                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
                 
             elif type == "B" and not (-4096 <= imm < 4096):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
+                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
                 
             elif type == "J" and not (-1048576 <= imm < 1048574):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
+                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
                 
             elif type == "J" and not (imm % 2 == 0): # Should be 4 to be 32b aligned?
-                self.emit_warning('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
+                self.record_alert('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
                 
             elif type == "U" and not (0 <= imm < (1 << 20)):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
+                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range")
         
         return imm
     
@@ -415,7 +419,7 @@ class RV32IAssembler:
 
         if not (-2048 <= imm_str < 2048):  # Can probably bundle this into the decode imm func if we pass the opcode also
              if self.should_warn('immediate_range'):
-                    self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
+                    self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range")
 
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
@@ -533,21 +537,24 @@ class RV32IAssembler:
             case None:
                 raise ValueError(f"Unsupported instruction: {opcode}")
         
-    def assemble(self, input_file, output_file):
+    def assemble(self, input, output):
         """Runs the entire assembly procedure"""
+        
+        # Setup results returner
+        results = AssemblerResults()
 
-        with open(input_file, 'r', encoding=ascii) as file:
-            lines = file.readlines()
+        self.reset_assembler()
 
-        # Run preprocessor and clean
+        lines = input.readlines()
         cleaned_lines = self.preprocessor(lines)
 
         # If program is too large, throw error
-        if len(cleaned_lines) > self.max_instructions:
-            print(f"Number of instructions in file at {input_file} larger than memory size!")
-            print(f"Cannot assemble! Max number of instructions is {self.max_instructions}")
-            return False
+        if len(cleaned_lines) > self.MAX_INSTRUCTIONS:
 
+            print(f"Number of instructions in of input file larger than memory size!")
+            print(f"Cannot assemble! Max number of instructions is {self.MAX_INSTRUCTIONS}")
+            return False
+        
         # Second pass is actually assembling the instructions
         self.pc = 0
         for line in cleaned_lines:
@@ -560,18 +567,21 @@ class RV32IAssembler:
                 return False
 
         # .mem file needs to fill the entire memory
-        while len(self.memory) < self.max_instructions: # Fill remaining memory with zeros 
-            self.memory.append(self.nop)
+        while len(self.memory) < self.MAX_INSTRUCTIONS: # Fill remaining memory with zeros 
+            self.memory.append(self.NOP)
 
         # Check for unused labels
         if self.should_warn('unused_label'):
             for unused_label in self.unused_labels:
-                self.emit_warning('unused_label', f"Label '{unused_label} is defined but never used")
+                self.record_alert('unused_label', f"Label '{unused_label} is defined but never used")
 
         # Write each assembled instruction in to the output .mem file as an 8 character hex sequence
-        with open(output_file, 'w', encoding=ascii) as file:
             for instr in self.memory:
-                file.write(f"{instr:08x}\n")
+                output.write(f"{instr:08x}\n")
 
-        print(f"Successfully assembled {len(cleaned_lines)} instructions to {output_file}")
-        return True
+
+        
+        results.warnings.append()
+
+
+

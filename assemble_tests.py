@@ -109,31 +109,59 @@ def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flag
     output_file = dest_path / f"{program_name}.mem"
     
     try:
+        src =  open(source_file, 'r', encoding=ascii)
         
-        # Set warning flags, if assembler supports it
-        if warning_flags and hasattr(assembler, 'set_warning_flags'):
-            assembler.set_warning_flags(warning_flags)
-        elif warning_flags and hasattr(assembler, 'warning_flags'):
-            assembler.warning_flags = warning_flags
+        out =  open(output_file, 'w', encoding=ascii)
         
-        result = assembler.assemble(str(source_file), str(output_file))
+        # Warning flags handled in caller
+        results = assembler.assemble(src, out)
         
+        warnings = assembler.warnings # Get the warnings from the assembler
+        
+        
+        # If we have Werror and we have warnings, then report as failure
+        if warning_flags.get('error_on_warning', False) and warnings:
+            return {
+                'program': program_name,
+                'success': False,
+                'error': f"ERROR: {'; '.join(str(w) for w in warnings)}",
+                'source': str(source_file),
+                'warnings': warnings
+            }
+        # Just warnings, we can say we still succeeded
         return {
             'program': program_name,
             'success': True,
             'source': str(source_file),
             'output': str(output_file),
-            'warnings': False, # Add warning messages to the assembler
+            'warnings': warnings, 
             'result': result
         }
     except Exception as e:
         return {
             'program': program_name,
             'success': False,
-            'warnings': False, # See above for add to assembler
+            'warnings': False, # fix this for warning message added
             'error': str(e),
             'source;': str(source_file)
         }
+
+def print_assembly_results(results):
+    
+    print("\n" + "="*60)
+    print("ASSEMBLY RESULTS")
+    print("="*60)
+    
+    successful = []
+    failed = []
+    total_warnings = 0
+    
+    for result in results:
+        if result['success']:
+            successful.append(result)
+            total_warnings += len(result.get('warnings', []))
+        else:
+            failed.append(result)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -226,7 +254,7 @@ def main():
         print("Warning: -w flag suppresses all warnings, other warning flags will be ignored")
     
     try:
-        assembler = RV32IAssembler()
+        assembler = RV32IAssembler(warning_Flags=warning_flags)
     except Exception as e:
         print(f"Error initializing assembler: {e}")
         sys.exit(1)
