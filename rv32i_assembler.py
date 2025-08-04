@@ -7,17 +7,7 @@ import os
 
 # Strategy: Two pass assembly - First pass collects labels and addresses while second pass does 
 # the actual assembly into binary
-class Alert:
-    def __init__(self, type, message, warning_type = None, line_num = None):
-        self.type = type,
-        self.message = message,
-        self.warning_type = warning_type or None
-        self.line_num = line_num or None
 
-class AssemblerResults:
-    def __init__(self):
-        self.success = False
-        self.alerts = [] # List of Alert objects
 
 class RV32IAssembler:
     """Contains all vars and methods for preprocess, assembly, and file writing"""
@@ -25,54 +15,48 @@ class RV32IAssembler:
         # Warning system
         self.warning_flags = warning_Flags or {}
         self.warnings = []
-        self.unused_labels = set()
         # Init mem, labels, PC [bytes], & NOP command
         self.labels = {}
-        self.used_labels = set()
+        self.referenced_labels = set()
         self.memory = []
         self.pc = 0
         self.NOP = 0x00000013
         self.MAX_INSTRUCTIONS = 1024
         self.line_nums = []
         
-        self.can_proceed = True
-        self.line_index = 1
+        self.current_line_index = 1
         
+        self.AssemblerResults        
+
         # opcodes - Use structured dictionary
         self.opcodes = {
-            # U-type
             "lui":      {"opcode": 0b0110111, "type" : "U"},
             "auipc":    {"opcode": 0b0010111, "type" : "U"},
-            # J-type + JALR (call and rtn)
             "jal":      {"opcode": 0b1101111, "type" : "J"}, 
-            "jalr":     {"opcode": 0b1100111, "type" : "J"}, 
-            # B-type
+            "jalr":     {"opcode": 0b1100111, "type" : "I"}, 
             "beq":      {"opcode": 0b1100011, "type" : "B"}, 
             "bne":      {"opcode": 0b1100011, "type" : "B"}, 
             "blt":      {"opcode": 0b1100011, "type" : "B"}, 
             "bge":      {"opcode": 0b1100011, "type" : "B"}, 
             "bltu":     {"opcode": 0b1100011, "type" : "B"}, 
             "bgeu":     {"opcode": 0b1100011, "type" : "B"}, 
-            # S-type
             "sb":       {"opcode": 0b0100011, "type" : "S"}, 
             "sh":       {"opcode": 0b0100011, "type" : "S"}, 
             "sw":       {"opcode": 0b0100011, "type" : "S"}, 
-            # I-type
             "addi":     {"opcode": 0b0010011, "type" : "I"}, 
             "slti":     {"opcode": 0b0010011, "type" : "I"}, 
             "sltiu":    {"opcode": 0b0010011, "type" : "I"}, 
             "xori":     {"opcode": 0b0010011, "type" : "I"}, 
             "ori":      {"opcode": 0b0010011, "type" : "I"}, 
             "andi":     {"opcode": 0b0010011, "type" : "I"}, 
-            "slli":     {"opcode": 0b0010011, "type" : "I"}, 
-            "srli":     {"opcode": 0b0010011, "type" : "I"}, 
-            "srai":     {"opcode": 0b0010011, "type" : "I"}, 
-            "lb":       {"opcode": 0b0000011, "type" : "I"}, 
-            "lh":       {"opcode": 0b0000011, "type" : "I"}, 
-            "lw":       {"opcode": 0b0000011, "type" : "I"}, 
-            "lbu":      {"opcode": 0b0000011, "type" : "I"}, 
-            "lhu":      {"opcode": 0b0000011, "type" : "I"}, 
-            # R-type
+            "slli":     {"opcode": 0b0010011, "type" : "I", "subtype" : "shift"}, 
+            "srli":     {"opcode": 0b0010011, "type" : "I", "subtype" : "shift"}, 
+            "srai":     {"opcode": 0b0010011, "type" : "I", "subtype" : "shift"}, 
+            "lb":       {"opcode": 0b0000011, "type" : "I", "subtype" : "load"}, 
+            "lh":       {"opcode": 0b0000011, "type" : "I", "subtype" : "load"}, 
+            "lw":       {"opcode": 0b0000011, "type" : "I", "subtype" : "load"}, 
+            "lbu":      {"opcode": 0b0000011, "type" : "I", "subtype" : "load"}, 
+            "lhu":      {"opcode": 0b0000011, "type" : "I", "subtype" : "load"}, 
             "add":      {"opcode": 0b0110011, "type" : "R"}, 
             "sub":      {"opcode": 0b0110011, "type" : "R"}, 
             "sll":      {"opcode": 0b0110011, "type" : "R"}, 
@@ -157,6 +141,19 @@ class RV32IAssembler:
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
 
+    class Alert:
+        def __init__(self, type, message, line_num, warning_type = None):
+            self.type = type,
+            self.message = message,
+            self.line_num = line_num
+            self.warning_type = warning_type or None
+
+    class AssemblerResults:
+        def __init__(self):
+            self.success = False
+            self.alerts = [] # List of Alert objects
+        
+       
     def reset_assembler(self):
         self.warnings = []
         self.unused_labels = set()
@@ -167,51 +164,37 @@ class RV32IAssembler:
         self.pc = 0
 
     def get_type(self, mnemonic):
-        """Gets the type of an instruction or None if it does not exist
-
-        Args:
-            mnemonic (str): String of the instruction mnemonic/opcode
-
-        Returns:
-            str: The type as a string, or None if not found
-        """
         return self.opcodes.get(mnemonic, {}).get("type", None)
         
-        
-    def record_alert(self, assembler_results, alert_type, message, warning_type = None, line_num=None):
-
-        if alert_type == "warning":
-            # See if the warning should be suppressed    
-            if self.warning_flags.get('suppress_all', False):
-                return 0
-            if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
-                return 0
-            if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
-                return 0
-
-        alert = Alert(alert_type, message, warning_type, line_num)
-        
-        assembler_results.alerts.append(alert)
-
-        
     def should_warn(self, warning_type):
-        """Check if a warning type should be emitted
 
-        Args:
-            warning_type (str): The type of the warning 
-
-        Returns:
-            bool: True if it should be emitted, false if not
-        """
+        type = warning_type.lower()
+        
         if self.warning_flags.get('suppress_all', False):
             return False
-        
-        if warning_type == 'unused_label':
+        if type == 'unused_label':
             return not self.warning_flags.get('no_unused_label', False)
-        elif warning_type == 'immediate_range':
+        elif type == 'immediate_range':
             return not self.warning_flags.get('no_immediate_range', False)
 
         return True
+        
+    def record_alert(self, alert_type, message, warning_type = None):
+
+        type = alert_type.lower()
+
+        if  type == "warning":
+            # See if the warning should be suppressed    
+            if self.warning_flags.get('suppress_all', False):
+                return
+            if warning_type == 'unused_label' and self.warning_flags.get('no_unused_label', False):
+                return
+            if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
+                return 
+        # Record the alert
+        alert = self.Alert(type, message, self.line_nums[self.current_line_index], warning_type)
+        # Append to results
+        self.AssemblerResults.alerts.append(alert)
 
     def preprocessor(self, lines):
         """First pass: Collect labels + addresses. Remove comments"""
@@ -253,42 +236,65 @@ class RV32IAssembler:
         opcode, operands = re.match('\s*([a-z]+)\s*(.*)$', line)
         return opcode, operands
 
-    def decode_offset(self, operand):
+    def parse_offset(self, operand):
         """Parses a operands of the style imm(rs1), returning the match, if any"""
         # Look for a number that may be positive or negative, then look for opening parenthesis
         # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
         return re.match('(-?\d+)\(([a-zA-Z0-9]+)\)', operand) 
 
-    def decode_immediate(self, imm_str, opcode):
+    def decode_immediate(self, opcode, imm_str = None, label= None, current_pc = None):
         """Parses an immediate number in either dec, hex, or bin"""
-        try:
-            if imm_str.startswith("0x"):
-                imm = int(imm_str, 16)
-            elif imm_str.startswith("0b"):
-                imm = int(imm_str, 2)
-            else:
-                imm = int(imm_str)
-        except ValueError:
-            raise ValueError(f"Invalid immediate: {imm_str}")
         
-        if self.should_warn('immediate_range'):
+        type = self.get_type(self, opcode) 
+
+        if type == "B" or type == "J":
+    
+            if label == None or current_pc == None:
+                self.record_alert("internal", f"No label or pc provided for branch/jump instruction")
+                raise Exception
+            elif label not in self.labels:
+                self.record_alert("error", f"Instruction references non-existent label")
+                raise Exception
             
-            type = self.get_type(self, opcode) 
+            target_addr = self.labels[label]
+            imm = target_addr - current_pc
             
+            if label not in self.referenced_labels: # Add to referenced list if not already referenced
+                self.referenced_labels.append(label)
+            
+        else:
+            if imm_str == None:
+                # todo: Record error
+                self.record_alert("internal", "No immediate string passed to non-branch/jump insrtuction")
+                raise ValueError
+            try:
+                if imm_str.startswith("0x"):
+                    imm = int(imm_str, 16)
+                elif imm_str.startswith("0b"):
+                    imm = int(imm_str, 2)
+                else:
+                    imm = int(imm_str)
+            except ValueError:
+                self.record_alert("error", "Invalid immediate value, '{imm_str}'")
+                raise ValueError
+        
+        if self.should_warn('immediate_range'):       
+      
             if type == "I" or type == "S" and not (-2048 <= imm < 2048):
-                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
+                self.record_alert("warning", f"Immediate value {imm}, may be out of typical range (-2048 to 2047)", warning_type='immediate_range')
                 
             elif type == "B" and not (-4096 <= imm < 4096):
-                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
+                self.record_alert("warning", f"Immediate value {imm}, may be out of typical range (-4096 to 4095)", warning_type='immediate_range')
                 
             elif type == "J" and not (-1048576 <= imm < 1048574):
-                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
+                self.record_alert("warning", f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)", warning_type='immediate_range')
                 
             elif type == "J" and not (imm % 2 == 0): # Should be 4 to be 32b aligned?
-                self.record_alert('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
+                self.record_alert("error", f"Jump offset value, {imm}, is not instruction aligned")
+                raise ValueError
                 
             elif type == "U" and not (0 <= imm < (1 << 20)):
-                self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range")
+                self.record_alert("warning", f"Upper mmediate value {imm}, is out of range", warning_type= 'immediate_range')
         
         return imm
     
@@ -300,19 +306,22 @@ class RV32IAssembler:
             if rd_str in self.registers:
                 registers.append(self.registers[rd_str])
             else:
-                raise ValueError(f"Invalid register name: {rd_str}")
+                self.record_alert("error", f"Invalid register name: {rd_str}")
+                raise ValueError
         
         if rs1_str is not None:
             if rs1_str in self.registers:
                 registers.append(self.registers[rs1_str])
             else:
-                raise ValueError(f"Invalid register name: {rs1_str}")
+                self.record_alert("error", f"Invalid register name: {rs1_str}")
+                raise ValueError
             
         if rs2_str is not None:
             if rs2_str in self.registers:
                 registers.append(self.registers[rs2_str])
             else:
-                raise ValueError(f"Invalid register name: {rs2_str}")
+                self.record_alert("error", f"Invalid register name: {rs2_str}")
+                raise ValueError
 
         return registers
 
@@ -349,28 +358,32 @@ class RV32IAssembler:
                 rs1_str = operands[0]
                 imm_str = operands[1]
             else:
-                raise ValueError(f"Invalid operand count for JALR: {len(operands)}")
+                self.record_alert("error", f"Invalid operand count for jalr instruction: {len(operands)}")
+                raise ValueError
             
         # Handle loads with different formats: lw rd, imm(rs1)
-        elif opcode in ["lb", "lh", "lw", "lbu", "lhu"]:
-
+        elif self.opcodes[opcode].get("subtype", '') == "load":
+        
             if len(operands) != 2: # invalid form
-                raise ValueError(f"Load instruction requires 2 operands, number of operands: {len(operands)}")
+                self.record_alert("error", f"Load instruction requires 2 operands, not {len(operands)}")
+                raise ValueError
             
             rd_str = operands[0]
             # Look for a number that may be positive or negative, then look for opening parenthesis
             # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
-            match = self.decode_offset(self, operands[1])
+            match = self.parse_offset(self, operands[1])
             # IF we didn't find a match, the instruction format is invalid
             if not match:
-                raise ValueError(f"Instruction format for load is invalid: {operands[1]}")
+                self.record_alert("error", f"Load instruction format is invalid")
+                raise ValueError
 
             imm_str = match.group(1) # Returns the immediate
             rs1_str = match.group(2) # Returns the first source register
 
         else:
             if len(operands) != 3:
-                raise ValueError(f"I-type instruction requires 3 operands: {opcode}{', '.join(operands())}")
+                self.record_alert("error", f"Immediate instruction format is invalid: {opcode}{', '.join(operands())}")
+                raise ValueError
 
             rd_str = operands[0]
             rs1_str = operands[1]
@@ -381,11 +394,13 @@ class RV32IAssembler:
         rd = registers[0]
         rs1 = registers[1]
 
-        imm = self.decode_immediate(self, imm_str)
+        imm = self.decode_immediate(self, imm_str=imm_str)
 
         # if it's a shift, then can only shift by 31 at the most
-        if opcode in ["slli", "srli", "srai"]:
+        # todo: Roll this into decode immediate 
+        if self.opcodes[opcode].get("subtype", '') == "shift":
             if not (0 <= imm < 32):
+                self.record_alert("warning")
                 raise ValueError(f"Shift amount out of range (0-31): {imm}")
 
             # SRAI uses a different func7
@@ -402,13 +417,15 @@ class RV32IAssembler:
         """Encodes S-type instructions to binary"""
 
         if len(operands) != 2:
-            raise ValueError(f"Error: Save instruction requires format of 'rs2 offset(rs1)', number of operands: {len(operands)}")
+            self.record_alert("error", f"Save instruction requires format of 'rs2 offset(rs1)', number of operands: {len(operands)}")
+            raise ValueError
         
         rs2_str = operands[0]
-        match = self.decode_offset(self, operands[1])
+        match = self.parse_offset(self, operands[1])
 
         if not match:
-            raise ValueError(f"Error: Could not parse offset in save instruction!\tOperand: {operands[1]}")
+            self.record_alert("error", f"Could not parse offset in save instruction\tOperand: {operands[1]}")
+            raise ValueError
 
         imm_str = match.group(1)
         rs1_str = match.group(2)
@@ -418,11 +435,7 @@ class RV32IAssembler:
         rs1 = registers[0]
         rs2 = registers[1]
 
-        imm = self.decode_immediate(self, imm_str)
-
-        if not (-2048 <= imm_str < 2048):  # Can probably bundle this into the decode imm func if we pass the opcode also
-             if self.should_warn('immediate_range'):
-                    self.record_alert('immediate_range', f"Immediate value {imm}, may be out of typical range")
+        imm = self.decode_immediate(self, imm_str=imm_str)
 
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
@@ -435,7 +448,8 @@ class RV32IAssembler:
 
         # B type instruction form: beq rs1, rs2, offset. len(operands) == 3, should
         if len(operands) != 3:
-            raise ValueError(f"Branch type instruction requires three operands, number of operands: {len(operands)}")
+            self.record_alert("error", f"Branch type instruction requires three operands, number of operands: {len(operands)}")
+            raise ValueError
         
         rs1_str = operands[0]
         rs2_str = operands[1]
@@ -446,14 +460,7 @@ class RV32IAssembler:
         rs1 = registers[0]
         rs2 = registers[1]
 
-        if label not in self.labels:
-            raise ValueError(f"Undefined label: {label}")
-        # Labels dictionary uses the label to hash to a PC value
-        target_addr = self.labels[label]
-        imm = target_addr - current_pc
-
-        if not (-4096 <= imm < 4096) or imm % 2 != 0:
-            raise ValueError(f"Branch offset is out of range or not a multiple of 2: {imm}")
+        imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
 
         imm_12 = (imm >> 12) & 0x1
         imm_11 = (imm >> 11) & 0x1
@@ -474,28 +481,19 @@ class RV32IAssembler:
             rd_str = "ra"
             label = operands[0]
         else:
-            raise ValueError(f"J-type instruction requires one or two operands: {opcode} {', '.join(operands)}")
+            self.record_alert("error", f"J-type instruction requires one or two operands: {opcode} {', '.join(operands)}")
+            raise ValueError
 
-        # opcode is the string of the instruction's opcode
-        # operands is a list of strings that are the different groupings of operands within the instruction
-        
         registers = self.validate_registers(self, rd_str=rd_str)
 
         rd = registers[0]
 
-        if label not in self.labels:
-            raise ValueError(f"Invalid label name. {label} is not referenced anywhere in the source code")
+        imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
         
-        target_addr = self.labels[label]
-        offset = target_addr - current_pc
-
-        if not (-1048576 <= offset < 1048576) or offset % 2 != 0:
-            raise ValueError(f"Jump offset is out of range or not a multiple of 2: {offset}")
-        
-        imm_20 = (offset >> 20) & 0x1
-        imm_10_1 = (offset >> 1) & 0x3FF
-        imm_11 = (offset >> 11) & 0x1
-        imm_19_12 = (offset >> 12) & 0x7F
+        imm_20 = (imm >> 20) & 0x1
+        imm_10_1 = (imm >> 1) & 0x3FF
+        imm_11 = (imm >> 11) & 0x1
+        imm_19_12 = (imm >> 12) & 0x7F
 
         instruction = (imm_20 << 31) | (imm_10_1 << 21) | (imm_11 << 20) | (imm_19_12 << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
@@ -504,7 +502,8 @@ class RV32IAssembler:
         """Encodes U-type instructions to binary"""
 
         if len(operands) != 2:
-            raise ValueError(f"Invalid operand count in U-type instruction, opcode: {opcode}, operands: {', '.join(operands)}")
+            self.record_alert("error", f"Invalid operand count in U-type instruction, opcode: {opcode}, operands: {', '.join(operands)}")
+            raise ValueError
         
         rd_str = operands[0]
         imm_str = operands[1]
@@ -512,7 +511,7 @@ class RV32IAssembler:
         registers = self.validate_registers(self, rd_str=rd_str)
         rd = registers[0]
 
-        imm = self.decode_immediate(self, imm_str)
+        imm = self.decode_immediate(self, imm_str=imm_str)
 
         instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
@@ -538,16 +537,12 @@ class RV32IAssembler:
             case "U":
                 return self.encode_u_type(opcode, operands)
             case None:
-                # @todo: Fix this to record the error and then return the failure
-                # Pass line number (line[1]) to this func
-                raise ValueError(f"Unsupported instruction: {opcode}")
+                self.record_alert("error", f"Instruction '{opcode}' is not supported")
+                raise ValueError
         
     def assemble(self, input, output):
         """Runs the entire assembly procedure"""
         
-        # Setup results returner
-        results = AssemblerResults()
-
         self.reset_assembler()
 
         lines = input.readlines()
@@ -556,22 +551,19 @@ class RV32IAssembler:
         # If program is too large, throw error
         if len(cleaned_lines) > self.MAX_INSTRUCTIONS:
             # todo: change to correct err handling
-            print(f"Number of instructions in of input file larger than memory size!")
-            print(f"Cannot assemble! Max number of instructions is {self.MAX_INSTRUCTIONS}")
-            return False
+            self.record_alert("error", f"Number of instructions in input is larger than memory size! Max number of instructions is {self.MAX_INSTRUCIONS}")
+            return self.AssemblerResults # Success defaults to fail
         
         # Second pass is actually assembling the instructions
         self.pc = 0
-        for line_num, line in cleaned_lines:
+        for index, line in cleaned_lines:
             try:
-                self.line_index = line_num
+                self.current_line_index = index
                 instruction = self.assemble_instruction(line, self.pc)
                 self.memory.append(instruction)
-                self.pc +=4
-            except Exception as e:
-                # @todo: Change to correct error handling
-                print(f"Error assembling instruction '{line}': {e}")
-                return False
+                self.pc += 4
+            except Exception: #Exceptions are recorded in the results
+                return self.AssemblerResults
 
         # .mem file needs to fill the entire memory
         while len(self.memory) < self.MAX_INSTRUCTIONS: # Fill remaining memory with zeros 
@@ -579,16 +571,15 @@ class RV32IAssembler:
 
         # Check for unused labels
         if self.should_warn('unused_label'):
-            for unused_label in self.unused_labels:
-                self.record_alert('unused_label', f"Label '{unused_label} is defined but never used")
+            unused_labels = self.labels - self.referenced_labels
+            for label in unused_labels:
+                self.record_alert('unused_label', f"Label '{label}' is defined but never used")
 
         # Write each assembled instruction in to the output .mem file as an 8 character hex sequence
-            for instr in self.memory:
-                output.write(f"{instr:08x}\n")
-
-
+        for instr in self.memory:
+            output.write(f"{instr:08x}\n")
+            
+        self.AssemblerResults.success = True
         
-        results.warnings.append()
-
-
+        return self.AssemblerResults
 
