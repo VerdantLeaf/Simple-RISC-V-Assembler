@@ -24,17 +24,6 @@ class RV32IAssembler:
         self.nop = 0x00000013
         self.max_instructions = 1024
 
-        # Reverse mapping of isntr type to check membership easier
-        self.type_to_mnemonics = {
-            "U": {"lui", "auipc"},
-            "J": {"jal", "jalr"},
-            "B": {"beq", "bne", "blt", "bge", "bltu", "bgeu"},
-
-            "S": {"sb", "sh", "sw"},
-            "I": {"addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai", "lb", "lh", "lw", "lbu", "lhu"},
-            "R": {"add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra", "or", "and",}
-        }
-        
         # opcodes - Use structured dictionary
         self.opcodes = {
             # U-type
@@ -154,6 +143,17 @@ class RV32IAssembler:
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
         
+    def get_type(self, mnemonic):
+        """Gets the type of an instruction or None if it does not exist
+
+        Args:
+            mnemonic (str): String of the instruction mnemonic/opcode
+
+        Returns:
+            str: The type as a string, or None if not found
+        """
+        return self.opcodes.get(mnemonic, {}).get("type", None)
+        
     def emit_warning(self, warning_type, message, line_num=None):
         """Emits a warning based on current warning flags
 
@@ -265,17 +265,23 @@ class RV32IAssembler:
             raise ValueError(f"Invalid immediate: {imm_str}")
         
         if self.should_warn('immediate_range'):
-            if opcode in self.type_to_mnemonics["I"] or opcode in self.type_to_mnemonics["S"] and not (-2048 <= imm < 2048):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
-            elif opcode in self.type_to_mnemonics["B"] and not (-4096 <= imm < 4096):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
-            elif opcode in self.type_to_mnemonics["J"] and not (-1048576 <= imm < 1048574):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
-            elif opcode in self.type_to_mnemonics["J"] and not (imm % 2 == 0):
-                self.emit_warning('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
-            elif opcode in self.type_to_mnemonics["U"] and not (0 <= imm < (1 << 20)):
-                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
             
+            type = self.get_type(self, opcode) 
+            
+            if type == "I" or type == "S" and not (-2048 <= imm < 2048):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-2048 to 2047)")
+                
+            elif type == "B" and not (-4096 <= imm < 4096):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-4096 to 4095)")
+                
+            elif type == "J" and not (-1048576 <= imm < 1048574):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range (-1048576 to 1048574)")
+                
+            elif type == "J" and not (imm % 2 == 0): # Should be 4 to be 32b aligned?
+                self.emit_warning('immediate_range', f"Immediate value {imm} for jump is not instruction aligned")
+                
+            elif type == "U" and not (0 <= imm < (1 << 20)):
+                self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
         
         return imm
     
@@ -318,7 +324,7 @@ class RV32IAssembler:
 
         f7 = self.func7[opcode]
         f3 = self.func3[opcode]
-        op = self.opcodes[opcode]
+        op = self.opcodes[opcode]["opcode"]
         # Assemble instruction
         instruction = (f7 << 25) | (rs2 << 20) | (rs1 << 15) | (f3 << 12) | (rd << 7) | op
         return instruction
@@ -378,18 +384,11 @@ class RV32IAssembler:
             # SRAI uses a different func7
             f7 = self.func7[opcode]
             imm = (f7 << 5) | (imm & 0x1F)
-        # Else, just check if in standard bounds & then encode
         else:
-            if not (-2048 <= imm < 2048):
-                if self.should_warn('immediate_range'):
-                    
-                # Allow proceeding though
-
-            # Encode imm
             imm = imm & 0xFFF
 
         # Build instruction
-        instruction = (imm << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]
+        instruction = (imm << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
 
     def encode_s_type(self, opcode, operands):
@@ -421,7 +420,7 @@ class RV32IAssembler:
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
 
-        instruction = ((imm_11_5) << 25) | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_0 << 7) | self.opcodes[opcode]
+        instruction = ((imm_11_5) << 25) | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_0 << 7) | self.opcodes[opcode]["opcode"]
         return instruction
 
     def encode_b_type(self, opcode, operands, current_pc):
@@ -454,7 +453,7 @@ class RV32IAssembler:
         imm_10_5 = (imm >> 5) & 0x3F
         imm_4_1 = (imm >> 1) & 0xF
 
-        instruction = (imm_12 << 31) | (imm_10_5 << 25)  | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_1 << 8) | (imm_11 << 7) | self.opcodes[opcode]
+        instruction = (imm_12 << 31) | (imm_10_5 << 25)  | (rs2 << 20) | (rs1 << 15) | (self.func3[opcode] << 12) | (imm_4_1 << 8) | (imm_11 << 7) | self.opcodes[opcode]["opcode"]
         return instruction
 
     def encode_j_type(self, opcode, operands, current_pc):
@@ -508,10 +507,7 @@ class RV32IAssembler:
 
         imm = self.decode_immediate(self, imm_str)
 
-        if  and self.should_warn('immediate_range'):
-            self.emit_warning('immediate_range', f"Immediate value {imm}, may be out of typical range")
-        
-        instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]
+        instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
 
     def assemble_instruction(self, line, current_pc):
@@ -519,21 +515,23 @@ class RV32IAssembler:
 
         opcode, operands = self.parse_instruction(line)
 
-        if opcode in ["add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra", "or", "and"]:
-            return self.encode_r_type(opcode, operands)   
-        elif opcode in ["addi", "slti", "sltiu", "xori", "ori", "andi", "slli", "srli", "srai", "jalr", # JALR
-                        "lb", "lh", "lw", "lbu", "lhu"]: # These take the i type form as well, need to encode as such
-            return self.encode_i_type(opcode, operands)
-        elif opcode in ["sb", "sh", "sw"]:
-            return self.encode_s_type(opcode, operands)
-        elif opcode in ["beq", "bne", "blt", "bge", "bltu", "bgeu"]:
-            return self.encode_b_type(opcode, operands, current_pc)
-        elif opcode in ["jal"]:
-            return self.encode_j_type(opcode, operands, current_pc)
-        elif opcode in ["lui", "auipc"]:
-            return self.encode_u_type(opcode, operands)
-        else:
-            raise ValueError(f"Unsupported instruction: {opcode}")
+        type = self.get_type(self, opcode)
+        
+        match type:
+            case "R":
+                return self.encode_r_type(opcode, operands)   
+            case "I":
+                return self.encode_i_type(opcode, operands)
+            case "S":
+                return self.encode_s_type(opcode, operands)
+            case "B":
+                return self.encode_b_type(opcode, operands, current_pc)
+            case "J":
+                return self.encode_j_type(opcode, operands, current_pc)
+            case "U":
+                return self.encode_u_type(opcode, operands)
+            case None:
+                raise ValueError(f"Unsupported instruction: {opcode}")
         
     def assemble(self, input_file, output_file):
         """Runs the entire assembly procedure"""
