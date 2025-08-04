@@ -5,6 +5,9 @@ The assembler uses a two-pass style of compilation and manages a symbol table fo
 
 However, allowing the assembler to create the different text and data sections of the output file. Additionally, doing other things to make it a "real" assembler would increase the utility. For now though, I need it for my purposes and I'll expand it if I need to/should.
 
+## Error and warning system:
+The `rv32i_assembler.py` file has become a standalone object that files like `assemble_tests.py` can instantiate and use to assemble their own programs. Results are returned from the `assemble()` method and describes what the results of the assembly was - were there errors/warnings, or was there an internal error to the program itself, as well as the messages for each error. The line number of the warning/error from the original sourcce file should be included in all messages (haven't fully tested that yet)
+
 # Operation/Completed work:
 ## Preprocessor:
 The preprocessor cleans out any comments and unecessary whitespace, as well as building a dictionary of labels and their respective program counters. Once the line is clean of comments, unnecessary whitespace, and labels (and does not contain just whitespace) then the instruction is clean and is appended to a list of the cleaned lines.

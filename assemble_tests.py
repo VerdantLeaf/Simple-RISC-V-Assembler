@@ -116,9 +116,6 @@ def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flag
         # Warning flags handled in caller
         results = assembler.assemble(src, out)
         
-        warnings = assembler.warnings # Get the warnings from the assembler
-        
-        
         # If we have Werror and we have warnings, then report as failure
         if warning_flags.get('error_on_warning', False) and warnings:
             return {

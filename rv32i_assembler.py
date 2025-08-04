@@ -264,7 +264,6 @@ class RV32IAssembler:
             
         else:
             if imm_str == None:
-                # todo: Record error
                 self.record_alert("internal", "No immediate string passed to non-branch/jump insrtuction")
                 raise ValueError
             try:
@@ -562,7 +561,7 @@ class RV32IAssembler:
                 instruction = self.assemble_instruction(line, self.pc)
                 self.memory.append(instruction)
                 self.pc += 4
-            except Exception: #Exceptions are recorded in the results
+            except Exception: # Errors and warnings are recorded in the results
                 return self.AssemblerResults
 
         # .mem file needs to fill the entire memory
