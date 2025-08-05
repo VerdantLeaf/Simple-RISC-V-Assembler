@@ -135,26 +135,8 @@ def print_assembly_result(results):
     
     print(f"\nAssembly was a {success}")
 
-    for alert in results['results'].alerts:
-        print(f"{alert.alert_type.upper()}: {alert.message} on {alert.line_num}")
-    
-    # if(not hasattr(results, "results")):
-    #     print(f"Assemble encountered an error a priori: {str(results['error'])}")
-    # else:
-    #     for alert in results["alerts"]:
-    #         alert_type = alert.type
-    #         if alert_type == "warning":
-    #             print(f"{alert_type.upper()} with type {alert.warning_type} occurred on line {alert.line_num}")
-    #         elif alert_type == "error":
-    #             print(f"{alert_type.upper()} occurred on line {alert.line_num}")
-    #         else:
-    #             print(f"{alert_type.upper()} error occurred on line {alert.line_num}")
-                
-    #         print(f"{alert.message}")
-        
-    # if results["success"]:
-    #     print(f"Program assembled to: {results['output']}")
-        
+    # List all warnings and errors and stuff
+
 
 def main():
     parser = argparse.ArgumentParser(

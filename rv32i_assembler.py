@@ -181,7 +181,7 @@ class RV32IAssembler:
     def record_alert(self, alert_type, message, warning_type = None):
 
         type = alert_type.lower()
-
+        
         if  type == "warning":
             # See if the warning should be suppressed    
             if self.warning_flags.get('suppress_all', False):
@@ -191,7 +191,7 @@ class RV32IAssembler:
             if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
                 return 
         # Record the alert
-        alert = Alert(type, message, self.line_nums[self.current_line_index], warning_type)
+        alert = Alert(str(type), message, self.line_nums[self.current_line_index], warning_type)
         # Append to results
         self.AssemblerResults.alerts.append(alert)
 
@@ -225,9 +225,9 @@ class RV32IAssembler:
                 # If no comments and no label, instruction is now clean. Append
                 clean_lines.append(line)
                 self.line_nums.append(line_num)
+                self.pc += 4
 
             # Each instruction is 4 Bytes
-            self.pc += 4
             line_num += 1
 
         return clean_lines
@@ -471,8 +471,6 @@ class RV32IAssembler:
 
         imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
         
-        print(imm)
-
         imm_12 = (imm >> 12) & 0x1
         imm_11 = (imm >> 11) & 0x1
         imm_10_5 = (imm >> 5) & 0x3F
@@ -500,6 +498,8 @@ class RV32IAssembler:
         rd = registers[0]
 
         imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
+        
+        print(f"immediate: {imm}")
         
         imm_20 = (imm >> 20) & 0x1
         imm_10_1 = (imm >> 1) & 0x3FF
@@ -536,7 +536,6 @@ class RV32IAssembler:
         self.parse_count +=1
    
         print(f"Parse count: {self.parse_count}")
-        print(f"{line}\n")
         try:
             match type:
                 case "R":
