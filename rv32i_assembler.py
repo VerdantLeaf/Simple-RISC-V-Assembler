@@ -27,7 +27,7 @@ class RV32IAssembler:
         self.warnings = []
         # Init mem, labels, PC [bytes], & NOP command
         self.labels = {}
-        self.referenced_labels = {}
+        self.referenced_labels = []
         self.memory = []
         self.pc = 0
         self.NOP = 0x00000013
@@ -216,8 +216,11 @@ class RV32IAssembler:
 
             # If the label doesn't exist in the label dict, then take the string + current
             # PC and add it to the labels dict
-            if label_match not in self.labels and label_match is not None:
-                self.labels[label_match] = {label_match, self.pc}
+            if label_match:
+                label = label_match.group(1)
+                if label_match not in self.labels:
+                    self.labels[label] = self.pc
+                    
             elif label_match is None:
                 # If no comments and no label, instruction is now clean. Append
                 clean_lines.append(line)
@@ -249,13 +252,13 @@ class RV32IAssembler:
         type = self.get_type(opcode) 
 
         if type == "B" or type == "J":
-    
+
             if label == None or current_pc == None:
                 self.record_alert("internal", f"No label or pc provided for branch/jump instruction")
-                raise Exception
+                raise ValueError
             elif label not in self.labels:
                 self.record_alert("error", f"Instruction references non-existent label")
-                raise Exception
+                raise ValueError
             
             target_addr = self.labels[label]
             imm = target_addr - current_pc
@@ -332,7 +335,7 @@ class RV32IAssembler:
         rs1_str = operands[1]
         rs2_str = operands[2]
 
-        registers = self.validate_registes(rd_str=rd_str, rs1_str=rs1_str, rs2_str=rs2_str)
+        registers = self.validate_registers(rd_str=rd_str, rs1_str=rs1_str, rs2_str=rs2_str)
 
         rd = registers[0]
         rs1 = registers[1]
@@ -371,7 +374,7 @@ class RV32IAssembler:
                 rd_str = operands[0]
                 # Look for a number that may be positive or negative, then look for opening parenthesis
                 # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
-                match = self.parse_offset(self, operands[1])
+                match = self.parse_offset(operands[1])
                 # IF we didn't find a match, the instruction format is invalid
                 if not match:
                     self.record_alert("error", f"Load instruction format is invalid")
@@ -399,7 +402,7 @@ class RV32IAssembler:
         rd = registers[0]
         rs1 = registers[1]
 
-        imm = self.decode_immediate(self, imm_str=imm_str)
+        imm = self.decode_immediate(opcode, imm_str=imm_str)
 
         # if it's a shift, then can only shift by 31 at the most
         # todo: Roll this into decode immediate 
@@ -426,7 +429,7 @@ class RV32IAssembler:
             raise ValueError
         
         rs2_str = operands[0]
-        match = self.parse_offset(self, operands[1])
+        match = self.parse_offset(operands[1])
 
         if not match:
             self.record_alert("error", f"Could not parse offset in save instruction\tOperand: {operands[1]}")
@@ -440,7 +443,7 @@ class RV32IAssembler:
         rs1 = registers[0]
         rs2 = registers[1]
 
-        imm = self.decode_immediate(self, imm_str=imm_str)
+        imm = self.decode_immediate(opcode, imm_str=imm_str)
 
         imm_11_5 = (imm >> 5) & 0x7F # Grab upper 7 bits
         imm_4_0 = imm & 0x1F
@@ -465,7 +468,10 @@ class RV32IAssembler:
         rs1 = registers[0]
         rs2 = registers[1]
 
+
         imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
+        
+        print(imm)
 
         imm_12 = (imm >> 12) & 0x1
         imm_11 = (imm >> 11) & 0x1
@@ -516,7 +522,7 @@ class RV32IAssembler:
         registers = self.validate_registers(rd_str=rd_str)
         rd = registers[0]
 
-        imm = self.decode_immediate(self, imm_str=imm_str)
+        imm = self.decode_immediate(opcode, imm_str=imm_str)
 
         instruction = (imm << 12) | (rd << 7) | self.opcodes[opcode]["opcode"]
         return instruction
@@ -530,6 +536,7 @@ class RV32IAssembler:
         self.parse_count +=1
    
         print(f"Parse count: {self.parse_count}")
+        print(f"{line}\n")
         try:
             match type:
                 case "R":
@@ -589,7 +596,7 @@ class RV32IAssembler:
 
         # Check for unused labels
         if self.should_warn('unused_label'):
-            unused_labels = self.labels - self.referenced_labels
+            unused_labels = [key for key in self.labels.keys() if key not in self.unused_labels]
             for label in unused_labels:
                 self.record_alert('unused_label', f"Label '{label}' is defined but never used")
 
