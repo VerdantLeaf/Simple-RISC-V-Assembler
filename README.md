@@ -1,12 +1,18 @@
 # Simple RISC-V Assembler
 Assembles simple RISC-V programs to .mem files for use by my CPU; because every good CPU needs its own assembler....
 
-The assembler uses a two-pass style of compilation and manages a symbol table for use by the assembler. Using regular expressions, the assembler implements an instruction parsing engine to decode the different instruction formats and convert the mnemonics to hexadecimal. Additionally, the assembler handles errors within the assembly code like range checking of immediates, register/label validation, and constructing the machine code file instructions. The current version is implemented for the RV32i instruction set, except for instructions like `ecall` as this program is not intended, at least currently, for use on a system with an OS.
+The assembler uses a two-pass style of compilation and manages a symbol table for use by the assembler. Using regular expressions, the assembler implements an instruction parsing engine to decode the different instruction formats and convert the mnemonics to hexadecimal. Additionally, the assembler handles errors within the assembly code like range checking of immediates, register/label validation, and constructing the machine code file instructions. The current version is implemented for the RV32i instruction set, except for instructions like `ecall` as this program is not intended, at least currently, for use on a system with an OS. I am considering adding this feature, as it would not require much work, due to the modular nature of the assembler.
 
-However, allowing the assembler to create the different text and data sections of the output file. Additionally, doing other things to make it a "real" assembler would increase the utility. For now though, I need it for my purposes and I'll expand it if I need to/should.
+The assembler itself is implemented in `rv32i_assembler.py` and provides the `assemble()` method to take the input file pointer and assemble the instructions found in the file, outputting to the output file pointer. This is the back end of the assembler, as the `assemble_test.py` file handles the front end responsibilities, like file validation, argument handling, etc.... `assemble()` returns an `AssemblerResults` object that can be used to understand the results of the assembly. The assembler uses [GCC style warnings](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html) to allow the user to tweak different settings within the compiler. These settings can be modified when instantiating the assembler object, by passing a string, bool dictionary of warning flags.
 
-## Error and warning system:
-The `rv32i_assembler.py` file has become a standalone object that files like `assemble_tests.py` can instantiate and use to assemble their own programs. Results are returned from the `assemble()` method and describes what the results of the assembly was - were there errors/warnings, or was there an internal error to the program itself, as well as the messages for each error. The line number of the warning/error from the original sourcce file should be included in all messages (haven't fully tested that yet)
+## Some Notes:
+As the project title may suggest, this assembler is "simple". It takes takes assembly code with labels, instructions, and comments, and then converts the instructions to a binary file. This is because my primary reasons for developing this were to create .mem files for my RISC-V CPU project and getting better at Python. Hence why I picked Python, as much as I love the C programming language, I wanted to worry about creating the assembler, not hunting down a memory leak or something. Additionally, I wanted to be able to develop and run the program on Windows/any platform/not Linux, since I didn't have Linux machine access at the start. I have no plans to assemble large programs with this code, so speed/performance came second to ease of development and usability.
+
+## Things I wish it could do
+Here are some things I wish the assembler could do, that I may add in the future:
+- Greater instruction support, whether that's RV32M or adding `ecall` or other instructions, it would expand the versatility
+- String constant support (goes with the one below) - Would allow for string constants to be stored in the output memory file (although with current CPU design would need to be loaded into a data.mem file)
+- More complex assembly files - adding support for detecting and parsing things like `.text`, `__global`, etc...
 
 # Operation/Completed work:
 ## Preprocessor:
@@ -24,5 +30,3 @@ Throughout this process, and the functions for all of the other instruction type
 
 ### Memory padding
 In my research, I found that Vivado will not accept .mem files that contain less memory than the memory that you've declared. Due to this, the rest of the memory is filled with zeros. The output file, as passed in the command line, is then written to, where each instruction is written as eight hexadecimal characters to represent the 32 bit instruction. This is done for all of the instructions in memory, and then the assembly is completed.
-
-### 
