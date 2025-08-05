@@ -27,7 +27,7 @@ class RV32IAssembler:
         self.warnings = []
         # Init mem, labels, PC [bytes], & NOP command
         self.labels = {}
-        self.referenced_labels = set()
+        self.referenced_labels = {}
         self.memory = []
         self.pc = 0
         self.NOP = 0x00000013
@@ -151,7 +151,7 @@ class RV32IAssembler:
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
 
-    
+        self.parse_count = 0
        
     def reset_assembler(self):
         self.warnings = []
@@ -191,7 +191,7 @@ class RV32IAssembler:
             if warning_type == 'immediate_range' and self.warning_flags.get('no_immediate_range', False):
                 return 
         # Record the alert
-        alert = self.Alert(type, message, self.line_nums[self.current_line_index], warning_type)
+        alert = Alert(type, message, self.line_nums[self.current_line_index], warning_type)
         # Append to results
         self.AssemblerResults.alerts.append(alert)
 
@@ -218,10 +218,10 @@ class RV32IAssembler:
             # PC and add it to the labels dict
             if label_match not in self.labels and label_match is not None:
                 self.labels[label_match] = {label_match, self.pc}
-
-            # If no comments and no label, instruction is now clean. Append
-            clean_lines.append(line)
-            self.line_nums.append(line_num)
+            elif label_match is None:
+                # If no comments and no label, instruction is now clean. Append
+                clean_lines.append(line)
+                self.line_nums.append(line_num)
 
             # Each instruction is 4 Bytes
             self.pc += 4
@@ -232,7 +232,9 @@ class RV32IAssembler:
     def parse_instruction(self, line):
         """Parses single instruction and returns opcode + operands"""
         # Split line into opcode and operands with regex.
-        opcode, operands = re.match('\s*([a-z]+)\s*(.*)$', line)
+        match = re.match(r'\s*([a-z]+)\s*(.*)$', line)
+        opcode, operand_str = match.groups()
+        operands = [op for op in re.split(r'[,\s]+', operand_str.strip()) if op]
         return opcode, operands
 
     def parse_offset(self, operand):
@@ -244,7 +246,7 @@ class RV32IAssembler:
     def decode_immediate(self, opcode, imm_str = None, label= None, current_pc = None):
         """Parses an immediate number in either dec, hex, or bin"""
         
-        type = self.get_type(self, opcode) 
+        type = self.get_type(opcode) 
 
         if type == "B" or type == "J":
     
@@ -330,7 +332,7 @@ class RV32IAssembler:
         rs1_str = operands[1]
         rs2_str = operands[2]
 
-        registers = self.validate_registes(self, rd_str, rs1_str, rs2_str)
+        registers = self.validate_registes(rd_str=rd_str, rs1_str=rs1_str, rs2_str=rs2_str)
 
         rd = registers[0]
         rs1 = registers[1]
@@ -345,49 +347,54 @@ class RV32IAssembler:
 
     def encode_i_type(self, opcode, operands):
         """Encodes I-type instructions to binary"""
-        
-        if opcode == "jalr":
-            if len(operands) == 3:  # jalr rd, rs1, imm
+        try:
+            if opcode == "jalr":
+                if len(operands) == 3:  # jalr rd, rs1, imm
+                    rd_str = operands[0]
+                    rs1_str = operands[1]
+                    imm_str = operands[2]
+                elif len(operands) == 2:    # jalr rs1, imm (rd implied as ra)
+                    rd_str = "ra"
+                    rs1_str = operands[0]
+                    imm_str = operands[1]
+                else:
+                    self.record_alert("error", f"Invalid operand count for jalr instruction: {len(operands)}")
+                    raise ValueError
+                
+            # Handle loads with different formats: lw rd, imm(rs1)
+            elif self.opcodes[opcode].get("subtype", '') == "load":
+            
+                if len(operands) != 2: # invalid form
+                    self.record_alert("error", f"Load instruction requires 2 operands, not {len(operands)}")
+                    raise ValueError
+                
+                rd_str = operands[0]
+                # Look for a number that may be positive or negative, then look for opening parenthesis
+                # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
+                match = self.parse_offset(self, operands[1])
+                # IF we didn't find a match, the instruction format is invalid
+                if not match:
+                    self.record_alert("error", f"Load instruction format is invalid")
+                    raise ValueError
+
+                imm_str = match.group(1) # Returns the immediate
+                rs1_str = match.group(2) # Returns the first source register
+
+            else:
+                if len(operands) != 3:
+                    self.record_alert("error", f"Immediate instruction format is invalid: {opcode}{', '.join(operands)}")
+                    raise ValueError
+
                 rd_str = operands[0]
                 rs1_str = operands[1]
                 imm_str = operands[2]
-            elif len(operands) == 2:    # jalr rs1, imm (rd implied as ra)
-                rd_str = "ra"
-                rs1_str = operands[0]
-                imm_str = operands[1]
-            else:
-                self.record_alert("error", f"Invalid operand count for jalr instruction: {len(operands)}")
-                raise ValueError
-            
-        # Handle loads with different formats: lw rd, imm(rs1)
-        elif self.opcodes[opcode].get("subtype", '') == "load":
-        
-            if len(operands) != 2: # invalid form
-                self.record_alert("error", f"Load instruction requires 2 operands, not {len(operands)}")
-                raise ValueError
-            
-            rd_str = operands[0]
-            # Look for a number that may be positive or negative, then look for opening parenthesis
-            # then look for a set of letters/numbers w/i the parenthesis, use operands[1] to match
-            match = self.parse_offset(self, operands[1])
-            # IF we didn't find a match, the instruction format is invalid
-            if not match:
-                self.record_alert("error", f"Load instruction format is invalid")
-                raise ValueError
 
-            imm_str = match.group(1) # Returns the immediate
-            rs1_str = match.group(2) # Returns the first source register
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            line_number = exc_tb.tb_lineno
+            print(f"Error on line: {line_number}, Type: {exc_type.__name__}, Message: {e}")
 
-        else:
-            if len(operands) != 3:
-                self.record_alert("error", f"Immediate instruction format is invalid: {opcode}{', '.join(operands())}")
-                raise ValueError
-
-            rd_str = operands[0]
-            rs1_str = operands[1]
-            imm_str = operands[2]
-
-        registers = self.validate_registers(self, rd_str=rd_str, rs1_str=rs1_str)
+        registers = self.validate_registers(rd_str=rd_str, rs1_str=rs1_str)
 
         rd = registers[0]
         rs1 = registers[1]
@@ -428,7 +435,7 @@ class RV32IAssembler:
         imm_str = match.group(1)
         rs1_str = match.group(2)
 
-        registers = self.validate_registers(self, rs1_str=rs1_str, rs2_str=rs2_str)
+        registers = self.validate_registers(rs1_str=rs1_str, rs2_str=rs2_str)
 
         rs1 = registers[0]
         rs2 = registers[1]
@@ -453,7 +460,7 @@ class RV32IAssembler:
         rs2_str = operands[1]
         label = operands[2]
 
-        registers = self.validate_registers(self, rs1_str=rs1_str, rs2_str=rs2_str)
+        registers = self.validate_registers(rs1_str=rs1_str, rs2_str=rs2_str)
 
         rs1 = registers[0]
         rs2 = registers[1]
@@ -482,7 +489,7 @@ class RV32IAssembler:
             self.record_alert("error", f"J-type instruction requires one or two operands: {opcode} {', '.join(operands)}")
             raise ValueError
 
-        registers = self.validate_registers(self, rd_str=rd_str)
+        registers = self.validate_registers(rd_str=rd_str)
 
         rd = registers[0]
 
@@ -506,7 +513,7 @@ class RV32IAssembler:
         rd_str = operands[0]
         imm_str = operands[1]
 
-        registers = self.validate_registers(self, rd_str=rd_str)
+        registers = self.validate_registers(rd_str=rd_str)
         rd = registers[0]
 
         imm = self.decode_immediate(self, imm_str=imm_str)
@@ -516,27 +523,35 @@ class RV32IAssembler:
 
     def assemble_instruction(self, line, current_pc):
         """Assembles one instruction to machine code"""
-
         opcode, operands = self.parse_instruction(line)
-
-        type = self.get_type(self, opcode)
         
-        match type:
-            case "R":
-                return self.encode_r_type(opcode, operands)   
-            case "I":
-                return self.encode_i_type(opcode, operands)
-            case "S":
-                return self.encode_s_type(opcode, operands)
-            case "B":
-                return self.encode_b_type(opcode, operands, current_pc)
-            case "J":
-                return self.encode_j_type(opcode, operands, current_pc)
-            case "U":
-                return self.encode_u_type(opcode, operands)
-            case None:
-                self.record_alert("error", f"Instruction '{opcode}' is not supported")
-                raise ValueError
+        type = self.get_type(opcode) 
+
+        self.parse_count +=1
+   
+        print(f"Parse count: {self.parse_count}")
+        try:
+            match type:
+                case "R":
+                    return self.encode_r_type(opcode, operands)   
+                case "I":
+                    return self.encode_i_type(opcode, operands)
+                case "S":
+                    return self.encode_s_type(opcode, operands)
+                case "B":
+                    return self.encode_b_type(opcode, operands, current_pc)
+                case "J":
+                    return self.encode_j_type(opcode, operands, current_pc)
+                case "U":
+                    return self.encode_u_type(opcode, operands)
+                case None:
+                    self.record_alert("error", f"Instruction '{opcode}' is not supported")
+                    raise ValueError
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            line_number = exc_tb.tb_lineno
+            print(f"Error on line: {line_number}, Type: {exc_type.__name__}, Message: {e}\n")
+            return self.AssemblerResults
         
     def assemble(self, input, output):
         """Runs the entire assembly procedure"""
@@ -554,13 +569,18 @@ class RV32IAssembler:
         
         # Second pass is actually assembling the instructions
         self.pc = 0
-        for index, line in cleaned_lines:
+        index = 0
+        for line in cleaned_lines:
             try:
                 self.current_line_index = index
                 instruction = self.assemble_instruction(line, self.pc)
                 self.memory.append(instruction)
                 self.pc += 4
-            except Exception: # Errors and warnings are recorded in the results
+                index += 1
+            except Exception as e: # Errors and warnings are recorded in the results
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                line_number = exc_tb.tb_lineno
+                print(f"Error on line: {line_number}, Type: {exc_type.__name__}, Message: {e}")
                 return self.AssemblerResults
 
         # .mem file needs to fill the entire memory

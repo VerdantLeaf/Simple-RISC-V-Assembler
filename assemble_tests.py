@@ -96,6 +96,7 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
             source_file = potential_file
             break
         
+        
     if not source_file:
         return {
             'program': program_name,
@@ -106,38 +107,37 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
     # Assembles to .mem files
     output_file = dest_path / f"{program_name}.mem"
     
-    try:
-        src =  open(source_file, 'r', encoding=ascii)
-        dst =  open(output_file, 'w', encoding=ascii)
-        
-        # Warning flags handled in caller
-        results = AssemblerResults()
-        
-        results = assembler.assemble(src, dst)
-        
-        return {
-            'program': program_name,
-            'success': results.success,
-            'source': str(source_file),
-            'output': str(output_file),
-            'results': results
-        }
-    except Exception as e:
-        return {
-            'program': program_name,
-            'success': False,
-            'error': str(e),
-            'source;': str(source_file)
-        }
+    src =  open(source_file, 'r', encoding='ascii')
+    dst =  open(output_file, 'w', encoding='ascii')
+    
+    
+    # Warning flags handled in caller
+    results = AssemblerResults()
+    
+    results = assembler.assemble(src, dst)
+    
+    return {
+        'program': program_name,
+        'success': results.success,
+        'source': str(source_file),
+        'output': str(output_file),
+        'results': results
+    }
 
 def print_assembly_result(results):
     
-    print("\n" + "="*60)
+    print("\n" + "="*50)
     print("ASSEMBLY RESULTS")
-    print("="*60)
+    print("="*50)
     
-    success = "succeeded" if results["success"] else "failed"
-    print(f"Program {success}.")
+
+    success = "SUCCESS" if results['success'] == True else "FAILURE"
+    
+    print(f"\nAssembly was a {success}")
+
+    for alert in results['results'].alerts:
+        print(f"{alert.alert_type.upper()}: {alert.message} on {alert.line_num}")
+    
     # if(not hasattr(results, "results")):
     #     print(f"Assemble encountered an error a priori: {str(results['error'])}")
     # else:
@@ -155,7 +155,6 @@ def print_assembly_result(results):
     # if results["success"]:
     #     print(f"Program assembled to: {results['output']}")
         
-    print("="*60)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -290,18 +289,19 @@ def main():
             
             try:
                 choice_num = int(choice)            
+                
                 if 1 <= choice_num < len(programs):
                     program_name = programs[choice_num - 1]
                     
                     res = assemble_program(assembler, args.source_dir, args.dest_dir, program_name)
-                    
                     print_assembly_result(res)
                 else:
                     print(f"Invalid choice. Please enter a number between 1 and {len(programs)}, or 'q' to quit.")
                 
-            except ValueError:
-                print(f"Invalid choice. Please enter a number between or 'q' to quit.")
-
+            except ValueError as ve:
+                print(f"Invalid choice. Please enter a number between 1 and {len(programs)}, or 'q' to quit.")
+                print(f"{ve}")
+                
         except KeyboardInterrupt:
             print("\n\nGoodbye!")
             break
