@@ -5,7 +5,7 @@ import os
 import sys
 import argparse
 import rv32i_assembler
-from rv32i_assembler import RV32IAssembler
+from rv32i_assembler import RV32IAssembler, AssemblerResults, Alert
 
 # Want to keep this pretty lightweight and simple
 
@@ -69,7 +69,7 @@ def display_menu(programs):
     print("q - quit")
     print("="*50)
 
-def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flags=None):
+def assemble_program(assembler, source_dir, dest_dir, program_name):
     """Assembles a single program into binary form
 
     Args:
@@ -81,12 +81,10 @@ def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flag
     Returns:
         dict: Dictionary describing the results of the assembly
     """
-
-
     source_path = Path(source_dir)
     dest_path = Path(dest_dir)
     
-    # Ensure that destination actually exusts
+    # Ensure that destination actually exists
     dest_path.mkdir(parents=True, exist_ok=True)
     
     source_file = None
@@ -110,55 +108,54 @@ def assemble_program(assembler, source_dir, dest_dir, program_name, warning_flag
     
     try:
         src =  open(source_file, 'r', encoding=ascii)
-        
-        out =  open(output_file, 'w', encoding=ascii)
+        dst =  open(output_file, 'w', encoding=ascii)
         
         # Warning flags handled in caller
-        results = assembler.assemble(src, out)
+        results = AssemblerResults()
         
-        # If we have Werror and we have warnings, then report as failure
-        if warning_flags.get('error_on_warning', False) and warnings:
-            return {
-                'program': program_name,
-                'success': False,
-                'error': f"ERROR: {'; '.join(str(w) for w in warnings)}",
-                'source': str(source_file),
-                'warnings': warnings
-            }
-        # Just warnings, we can say we still succeeded
+        results = assembler.assemble(src, dst)
+        
         return {
             'program': program_name,
-            'success': True,
+            'success': results.success,
             'source': str(source_file),
             'output': str(output_file),
-            'warnings': warnings, 
-            'result': result
+            'results': results
         }
     except Exception as e:
         return {
             'program': program_name,
             'success': False,
-            'warnings': False, # fix this for warning message added
             'error': str(e),
             'source;': str(source_file)
         }
 
-def print_assembly_results(results):
+def print_assembly_result(results):
     
     print("\n" + "="*60)
     print("ASSEMBLY RESULTS")
     print("="*60)
     
-    successful = []
-    failed = []
-    total_warnings = 0
-    
-    for result in results:
-        if result['success']:
-            successful.append(result)
-            total_warnings += len(result.get('warnings', []))
-        else:
-            failed.append(result)
+    success = "succeeded" if results["success"] else "failed"
+    print(f"Program {success}.")
+    # if(not hasattr(results, "results")):
+    #     print(f"Assemble encountered an error a priori: {str(results['error'])}")
+    # else:
+    #     for alert in results["alerts"]:
+    #         alert_type = alert.type
+    #         if alert_type == "warning":
+    #             print(f"{alert_type.upper()} with type {alert.warning_type} occurred on line {alert.line_num}")
+    #         elif alert_type == "error":
+    #             print(f"{alert_type.upper()} occurred on line {alert.line_num}")
+    #         else:
+    #             print(f"{alert_type.upper()} error occurred on line {alert.line_num}")
+                
+    #         print(f"{alert.message}")
+        
+    # if results["success"]:
+    #     print(f"Program assembled to: {results['output']}")
+        
+    print("="*60)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -264,7 +261,6 @@ def main():
         
     if args.assemble_all:
         print(f"Assembling all {len(programs)} programs...")
-        results = []
         
         
         sys.exit(0)
@@ -296,6 +292,10 @@ def main():
                 choice_num = int(choice)            
                 if 1 <= choice_num < len(programs):
                     program_name = programs[choice_num - 1]
+                    
+                    res = assemble_program(assembler, args.source_dir, args.dest_dir, program_name)
+                    
+                    print_assembly_result(res)
                 else:
                     print(f"Invalid choice. Please enter a number between 1 and {len(programs)}, or 'q' to quit.")
                 

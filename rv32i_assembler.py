@@ -7,7 +7,17 @@ import os
 
 # Strategy: Two pass assembly - First pass collects labels and addresses while second pass does 
 # the actual assembly into binary
+class Alert:
+    def __init__(self, type, message, line_num, warning_type = None):
+        self.type = type,
+        self.message = message,
+        self.line_num = line_num
+        self.warning_type = warning_type or None
 
+class AssemblerResults:
+    def __init__(self):
+        self.success = False
+        self.alerts = [] # List of Alert objects
 
 class RV32IAssembler:
     """Contains all vars and methods for preprocess, assembly, and file writing"""
@@ -26,7 +36,7 @@ class RV32IAssembler:
         
         self.current_line_index = 1
         
-        self.AssemblerResults        
+        self.AssemblerResults = AssemblerResults()        
 
         # opcodes - Use structured dictionary
         self.opcodes = {
@@ -141,18 +151,7 @@ class RV32IAssembler:
             "x24": 24, "x25": 25, "x26": 26, "x27": 27, "x28": 28, "x29": 29, "x30": 30, "x31": 31, 
         }
 
-    class Alert:
-        def __init__(self, type, message, line_num, warning_type = None):
-            self.type = type,
-            self.message = message,
-            self.line_num = line_num
-            self.warning_type = warning_type or None
-
-    class AssemblerResults:
-        def __init__(self):
-            self.success = False
-            self.alerts = [] # List of Alert objects
-        
+    
        
     def reset_assembler(self):
         self.warnings = []
