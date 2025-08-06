@@ -6,7 +6,7 @@ import sys
 import argparse
 import rv32i_assembler
 from rv32i_assembler import RV32IAssembler, AssemblerResults, Alert
-from colorama import Fore, init
+from colorama import Fore, init # type: ignore
 
 def get_program_files(source_dir):
     """Collects all the assembly program files from the source directory

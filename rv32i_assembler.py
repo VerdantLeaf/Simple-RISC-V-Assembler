@@ -550,9 +550,9 @@ class RV32IAssembler:
                     return self.encode_j_type(opcode, operands, current_pc)
                 case "U":
                     return self.encode_u_type(opcode, operands)
-                case None:
+                case _:
                     self.record_alert("error", f"Instruction '{opcode}' is not supported")
-                    raise ValueError
+                    raise Exception
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             line_number = exc_tb.tb_lineno
