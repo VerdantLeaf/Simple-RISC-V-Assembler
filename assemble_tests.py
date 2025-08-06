@@ -144,7 +144,7 @@ def print_assembly_result(results):
                 color = Fore.MAGENTA                
             
             print(f"{idx:2d}.", end=' ')
-            print(color + f"{str(alert.type)}", end=' ')
+            print(color + f"{str(alert.type).capitalize()}", end=' ')
             print(f"occurred on line number {alert.line_num}.", end=' ')
             if type == 'warning':
                 print(f"Warning type is: {alert.warning_type}.", end= ' ')

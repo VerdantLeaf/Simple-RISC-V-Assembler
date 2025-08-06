@@ -24,7 +24,6 @@ class RV32IAssembler:
     def __init__(self, warning_Flags=None):
         # Warning system
         self.warning_flags = warning_Flags or {}
-        self.warnings = []
         # Init mem, labels, PC [bytes], & NOP command
         self.labels = {}
         self.referenced_labels = []
@@ -154,13 +153,18 @@ class RV32IAssembler:
         self.parse_count = 0
        
     def reset_assembler(self):
-        self.warnings = []
         self.unused_labels = set()
         self.labels = {}
         self.used_labels = set()
         self.memory = []
         self.line_nums = []
         self.pc = 0
+        
+        self.line_nums = []
+        self.current_line_index = 1
+        
+        self.AssemblerResults.alerts = []
+        self.AssemblerResults.success = False
 
     def get_type(self, mnemonic):
         return self.opcodes.get(mnemonic, {}).get("type", None)
@@ -209,6 +213,7 @@ class RV32IAssembler:
 
             # Skip lines with no text on them
             if not line:
+                line_num += 1
                 continue
 
             # See if there is a label on this line to record the address
