@@ -126,17 +126,24 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
 
 def print_assembly_result(results):
     
-    print("\n" + "="*50)
+    print("\n" + "-"*50)
     print("ASSEMBLY RESULTS")
-    print("="*50)
-    
 
     success = "SUCCESS" if results['success'] == True else "FAILURE"
     
     print(f"\nAssembly was a {success}")
 
     # List all warnings and errors and stuff
-
+    for alert in results["results"].alerts:
+        if alert.type == 'internal':
+            raise ValueError("Internal/unknown error during assembly...")
+        else:
+            print(f"{str(alert.type)} occurred on line number {alert.line_num}.", end=' ')
+            if alert.type == 'warning':
+                print(f"Warning type is: {alert.warning_type}.", end= ' ')
+            print(str(alert.message))
+            
+    print("-"*50)
 
 def main():
     parser = argparse.ArgumentParser(

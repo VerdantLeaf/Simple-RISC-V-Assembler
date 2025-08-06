@@ -283,7 +283,7 @@ class RV32IAssembler:
         
         if self.should_warn('immediate_range'):       
       
-            if type == "I" or type == "S" and not (-2048 <= imm < 2048):
+            if (type == "I" or type == "S") and not (-2048 <= imm < 2048):
                 self.record_alert("warning", f"Immediate value {imm}, may be out of typical range (-2048 to 2047)", warning_type='immediate_range')
                 
             elif type == "B" and not (-4096 <= imm < 4096):
@@ -499,8 +499,6 @@ class RV32IAssembler:
 
         imm = self.decode_immediate(opcode, label=label, current_pc=current_pc)
         
-        print(f"immediate: {imm}")
-        
         imm_20 = (imm >> 20) & 0x1
         imm_10_1 = (imm >> 1) & 0x3FF
         imm_11 = (imm >> 11) & 0x1
@@ -533,9 +531,6 @@ class RV32IAssembler:
         
         type = self.get_type(opcode) 
 
-        self.parse_count +=1
-   
-        print(f"Parse count: {self.parse_count}")
         try:
             match type:
                 case "R":
@@ -595,7 +590,7 @@ class RV32IAssembler:
 
         # Check for unused labels
         if self.should_warn('unused_label'):
-            unused_labels = [key for key in self.labels.keys() if key not in self.unused_labels]
+            unused_labels = [key for key in self.labels.keys() if key not in self.referenced_labels]
             for label in unused_labels:
                 self.record_alert('unused_label', f"Label '{label}' is defined but never used")
 
