@@ -9,8 +9,8 @@ import os
 # the actual assembly into binary
 class Alert:
     def __init__(self, type, message, line_num, warning_type = None):
-        self.type = type,
-        self.message = message,
+        self.type = type
+        self.message = message
         self.line_num = line_num
         self.warning_type = warning_type or None
 

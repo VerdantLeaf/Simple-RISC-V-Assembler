@@ -6,21 +6,7 @@ import sys
 import argparse
 import rv32i_assembler
 from rv32i_assembler import RV32IAssembler, AssemblerResults, Alert
-
-# Want to keep this pretty lightweight and simple
-
-# Collect the program names in the /prog directory. Include optional argument to set custom source dir
-
-# Create nice menu to ask user which of the programs they would like to assemble 
-# Include optional -A flag to automatically assemble all the tests
-# Inlcude optional -S flag to automatically assemble all the tests with the "simple_" prefix
-
-# Use the assembler object to assemble each test and place into the bin dir. Include optional argument to set custom destination directory
-
-# Collect any warnings/errors on assembler execution
-# Print something nice to the terminal/user with the results of assembly
-
-# Return to the menu to ask the user which program they would like to assemble. If the A or S flag was passed, exit immediately. Allow Q (case insensitive) to be a quit command as well
+from colorama import Fore, init
 
 def get_program_files(source_dir):
     """Collects all the assembly program files from the source directory
@@ -125,27 +111,51 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
     }
 
 def print_assembly_result(results):
+    """Prints the results of the assembler given the return object
+
+    Args:
+        results (AssemblerResults): Dict containing the results of assembly of a program
+
+    Raises:
+        ValueError: Called if the assembler experiences an interna;/unknown error
+    """
     
     print("\n" + "-"*50)
     print("ASSEMBLY RESULTS")
+    print("-"*50)
 
     success = "SUCCESS" if results['success'] == True else "FAILURE"
     
-    print(f"\nAssembly was a {success}")
-
+    if results['success']:
+        print(Fore.GREEN + f"\nProgram was successfully assembled with {len(results['results'].alerts)} warnings\n")
+    else:
+        print(Fore.RED + f"\nProgram failed assembly with {len(['results'].alerts)} warnings and errors\n")
+    
     # List all warnings and errors and stuff
-    for alert in results["results"].alerts:
-        if alert.type == 'internal':
-            raise ValueError("Internal/unknown error during assembly...")
+    for idx, alert in enumerate(results["results"].alerts, 1):
+        type = alert.type
+        if type == 'internal':
+            print("Internal/unknown fatal error occurred during assembly...")
+            raise ValueError
         else:
-            print(f"{str(alert.type)} occurred on line number {alert.line_num}.", end=' ')
-            if alert.type == 'warning':
+            if type == "error":
+                color = Fore.RED
+            else:
+                color = Fore.MAGENTA                
+            
+            print(f"{idx:2d}.", end=' ')
+            print(color + f"{str(alert.type)}", end=' ')
+            print(f"occurred on line number {alert.line_num}.", end=' ')
+            if type == 'warning':
                 print(f"Warning type is: {alert.warning_type}.", end= ' ')
-            print(str(alert.message))
+            print("\n" + str(alert.message), end="\n\n")
             
     print("-"*50)
 
 def main():
+    
+    init(autoreset=True)
+    
     parser = argparse.ArgumentParser(
         description="Semi-automation of RV32I program assembler",
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -250,7 +260,7 @@ def main():
     if args.assemble_all:
         print(f"Assembling all {len(programs)} programs...")
         
-        
+        # todo: finish these
         sys.exit(0)
         
     if args.assemble_simple:
@@ -259,7 +269,7 @@ def main():
             print("No programs with 'simple_' prefix found.")
             sys.exit(1)
             
-            
+        # todo: finish these
             
         sys.exit(0)
 
