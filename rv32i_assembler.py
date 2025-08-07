@@ -587,7 +587,7 @@ class RV32IAssembler:
         while len(self.memory) < self.MAX_INSTRUCTIONS: # Fill remaining memory with zeros 
             self.memory.append(self.NOP)
 
-        # Check for unused labels
+        # Check for unused labels - This could be a lot better, in that it will be the last warnings found, always
         if self.should_warn('unused_label'):
             unused_labels = [key for key in self.labels.keys() if key not in self.referenced_labels]
             for label in unused_labels:
