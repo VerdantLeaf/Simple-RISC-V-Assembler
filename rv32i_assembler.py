@@ -536,28 +536,22 @@ class RV32IAssembler:
         
         type = self.get_type(opcode) 
 
-        try:
-            match type:
-                case "R":
-                    return self.encode_r_type(opcode, operands)   
-                case "I":
-                    return self.encode_i_type(opcode, operands)
-                case "S":
-                    return self.encode_s_type(opcode, operands)
-                case "B":
-                    return self.encode_b_type(opcode, operands, current_pc)
-                case "J":
-                    return self.encode_j_type(opcode, operands, current_pc)
-                case "U":
-                    return self.encode_u_type(opcode, operands)
-                case _:
-                    self.record_alert("error", f"Instruction '{opcode}' is not supported")
-                    raise Exception
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            line_number = exc_tb.tb_lineno
-            print(f"Error on line: {line_number}, Type: {exc_type.__name__}, Message: {e}\n")
-            return self.AssemblerResults
+        match type:
+            case "R":
+                return self.encode_r_type(opcode, operands)   
+            case "I":
+                return self.encode_i_type(opcode, operands)
+            case "S":
+                return self.encode_s_type(opcode, operands)
+            case "B":
+                return self.encode_b_type(opcode, operands, current_pc)
+            case "J":
+                return self.encode_j_type(opcode, operands, current_pc)
+            case "U":
+                return self.encode_u_type(opcode, operands)
+            case _:
+                self.record_alert("error", f"Instruction '{opcode}' is not supported")
+                raise Exception
         
     def assemble(self, input, output):
         """Runs the entire assembly procedure"""

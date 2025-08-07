@@ -102,6 +102,9 @@ def assemble_program(assembler, source_dir, dest_dir, program_name):
     
     results = assembler.assemble(src, dst)
     
+    src.close()
+    dst.close() # in the future, the dst file shouldn't be created unless the compilation was successful
+    
     return {
         'program': program_name,
         'success': results.success,
@@ -129,7 +132,7 @@ def print_assembly_result(results):
     if results['success']:
         print(Fore.GREEN + f"\nProgram was successfully assembled with {len(results['results'].alerts)} warnings\n")
     else:
-        print(Fore.RED + f"\nProgram failed assembly with {len(['results'].alerts)} warnings and errors\n")
+        print(Fore.RED + f"\nProgram failed assembly with {len(results['results'].alerts)} warnings and errors\n")
     
     # List all warnings and errors and stuff
     for idx, alert in enumerate(results["results"].alerts, 1):
