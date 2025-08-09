@@ -1,3 +1,7 @@
+## Status
+
+Headed out of town/back to school, so commits will be winded down and not guaranteed as focusing on other parts of life. Looking for improvements, but no guarantees. This program does work pretty well for my uses, if you look at the different examples in prog/bin, check them out.
+
 # Simple RISC-V Assembler
 Assembles simple RISC-V programs to .mem files for use by my CPU; because every good CPU needs its own assembler....
 
@@ -7,6 +11,8 @@ The assembler itself is implemented in `rv32i_assembler.py` and provides the `as
 
 ## Some Notes:
 As the project title may suggest, this assembler is "simple". It takes takes assembly code with labels, instructions, and comments, and then converts the instructions to a binary file. This is because my primary reasons for developing this were to create .mem files for my RISC-V CPU project and getting better at Python. Hence why I picked Python, as much as I love the C programming language, I wanted to worry about creating the assembler, not hunting down a memory leak or something. Additionally, I wanted to be able to develop and run the program on Windows/any platform/not Linux, since I didn't have Linux machine access at the start. I have no plans to assemble large programs with this code, so speed/performance came second to ease of development and usability.
+
+The program is essentially a compiler backend - sort of... I actually learned a lot about compiler design in making this and would make a lot of changes, if I did it over again, maybe I will. 
 
 ## Things I wish it could do
 Here are some things I wish the assembler could do, that I may add in the future:
